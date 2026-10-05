@@ -43,8 +43,20 @@ targets:
       path: RestroomTests/Info.plist
       properties: {}
     dependencies: [{ target: Restroom }]
+  RestroomUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [RestroomUITests]
+    settings:
+      base:
+        INFOPLIST_FILE: RestroomUITests/Info.plist
+        TEST_TARGET_NAME: Restroom
+    info:
+      path: RestroomUITests/Info.plist
+      properties: {}
+    dependencies: [{ target: Restroom }]
 schemes:
   Restroom:
-    build: { targets: { Restroom: all, RestroomTests: [test] } }
+    build: { targets: { Restroom: all, RestroomTests: [test], RestroomUITests: [test] } }
     run: { config: Debug }
-    test: { config: Debug, targets: [RestroomTests] }
+    test: { config: Debug, targets: [RestroomTests, RestroomUITests] }

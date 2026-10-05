@@ -1,6 +1,5 @@
 import CoreLocation
 import Foundation
-import MapKit
 
 enum LoadState: Equatable {
     case idle, loading, loaded, empty
@@ -17,10 +16,12 @@ final class FinderModel: ObservableObject {
     @Published var query: String = ""
 
     private let api: RestroomProvider
+    private let places: PlaceResolver
     private var inflight: Task<Void, Never>?
 
-    init(api: RestroomProvider = RefugeAPI.shared) {
+    init(api: RestroomProvider = RefugeAPI.shared, places: PlaceResolver = LocalSearchResolver()) {
         self.api = api
+        self.places = places
     }
 
     func useCurrentLocation(_ loc: CLLocation) {
@@ -33,17 +34,12 @@ final class FinderModel: ObservableObject {
         let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
         state = .loading
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = q
-        let item: MKMapItem?
-        do { item = try await MKLocalSearch(request: request).start().mapItems.first }
-        catch { item = nil }
-        guard let item else {
+        guard let place = await places.resolve(q) else {
             state = .failed("No place named “\(q)”")
             return
         }
-        center = item.placemark.coordinate
-        centerLabel = item.name ?? q
+        center = place.coordinate
+        centerLabel = place.name
         reload()
     }
 

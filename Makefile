@@ -3,7 +3,7 @@ SIM := platform=iOS Simulator,name=iPhone 17 Pro
 APP := com.kevinpostal.restroom
 UDID ?= $(shell DEVELOPER_DIR=$(DEVELOPER_DIR) xcrun devicectl list devices 2>/dev/null | awk '/iPhone/ {print $$3}' | head -1)
 
-.PHONY: gen build test sim device
+.PHONY: gen build test uitest sim device
 
 gen:
 	xcodegen generate
@@ -12,7 +12,10 @@ build: gen
 	xcodebuild -project Restroom.xcodeproj -scheme Restroom -destination "$(SIM)" -derivedDataPath build build
 
 test: gen
-	xcodebuild test -project Restroom.xcodeproj -scheme Restroom -destination "$(SIM)" -derivedDataPath build
+	xcodebuild test -project Restroom.xcodeproj -scheme Restroom -destination "$(SIM)" -derivedDataPath build -only-testing:RestroomTests
+
+uitest: gen
+	xcodebuild test -project Restroom.xcodeproj -scheme Restroom -destination "$(SIM)" -derivedDataPath build -only-testing:RestroomUITests
 
 sim: build
 	xcrun simctl install booted build/Build/Products/Debug-iphonesimulator/Restroom.app

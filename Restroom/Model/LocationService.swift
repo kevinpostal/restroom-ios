@@ -7,15 +7,20 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var location: CLLocation?
 
     private let manager = CLLocationManager()
+    /// When set (UI tests), the system manager is never asked for anything.
+    private let simulated: CLAuthorizationStatus?
 
-    override init() {
-        authorization = manager.authorizationStatus
+    init(simulatedAuthorization: CLAuthorizationStatus? = nil) {
+        simulated = simulatedAuthorization
+        authorization = simulatedAuthorization ?? manager.authorizationStatus
         super.init()
+        guard simulatedAuthorization == nil else { return }
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
     func request() {
+        guard simulated == nil else { return }
         switch manager.authorizationStatus {
         case .notDetermined: manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways: manager.requestLocation()

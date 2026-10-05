@@ -14,13 +14,14 @@ enum Theme {
 
     enum Style { case display, title, body, mono, label }
 
+    /// Text-style based so every size scales with Dynamic Type (defaults: 34/20/17/15/12 pt).
     static func font(_ style: Style) -> Font {
         switch style {
-        case .display: return .system(size: 34, weight: .bold)
-        case .title: return .system(size: 20, weight: .semibold)
-        case .body: return .system(size: 17, weight: .regular)
-        case .mono: return .system(size: 15, design: .monospaced)
-        case .label: return .system(size: 12, weight: .semibold)
+        case .display: return .largeTitle.weight(.bold)
+        case .title: return .title3.weight(.semibold)
+        case .body: return .body
+        case .mono: return .system(.subheadline, design: .monospaced)
+        case .label: return .caption.weight(.semibold)
         }
     }
 }

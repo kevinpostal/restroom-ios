@@ -91,4 +91,12 @@ struct Restroom: Identifiable, Decodable, Equatable {
         if m < 1000 { return "\(Int((m / 10).rounded() * 10)) m" }
         return String(format: "%.1f km", m / 1000)
     }
+
+    /// `distanceText` with units spelled out for VoiceOver ("0.4 miles", "300 feet").
+    var distanceSpoken: String? {
+        guard let t = distanceText else { return nil }
+        let units = [" mi": " miles", " ft": " feet", " km": " kilometers", " m": " meters"]
+        for (abbr, word) in units where t.hasSuffix(abbr) { return String(t.dropLast(abbr.count)) + word }
+        return t
+    }
 }

@@ -5,8 +5,10 @@ import SwiftUI
 struct FinderView: View {
     @EnvironmentObject private var model: FinderModel
     @EnvironmentObject private var location: LocationService
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var usedFirstFix = false
+    @State private var detent: PresentationDetent = .large
 
     var body: some View {
         GeometryReader { geo in
@@ -21,11 +23,17 @@ struct FinderView: View {
         .background(Theme.paper.ignoresSafeArea())
         .sheet(item: $model.selected) { r in
             DetailView(restroom: r)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $detent)
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.paper)
         }
-        .task { location.request() }
+        .task {
+            if UITestMode.isActive {
+                if !UITestMode.flag("-uitest-denied") { model.useCurrentLocation(UITestMode.start) }
+            } else {
+                location.request()
+            }
+        }
         .onReceive(location.$location.compactMap { $0 }) { loc in
             guard !usedFirstFix else { return }
             usedFirstFix = true
@@ -35,6 +43,7 @@ struct FinderView: View {
         .onChange(of: model.center?.longitude) { _, _ in recenter() }
         .onChange(of: model.selected?.id) { _, _ in
             guard let r = model.selected else { return }
+            detent = .large
             move(to: r.coordinate, span: 600)
         }
     }
@@ -45,8 +54,11 @@ struct FinderView: View {
     }
 
     private func move(to c: CLLocationCoordinate2D, span: CLLocationDistance) {
-        withAnimation {
-            camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span))
+        let region = MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span)
+        if reduceMotion {
+            camera = .region(region)
+        } else {
+            withAnimation { camera = .region(region) }
         }
     }
 
@@ -55,40 +67,70 @@ struct FinderView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Restroom").themed(.label)
-                    Text(model.centerLabel).themed(.display).lineLimit(1)
+                    Text(model.centerLabel).themed(.display).lineLimit(2)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("header.title")
                 }
                 Spacer()
                 Button {
                     usedFirstFix = false
-                    location.request()
-                    if let loc = location.location { model.useCurrentLocation(loc) }
+                    if UITestMode.isActive {
+                        if !UITestMode.flag("-uitest-denied") { model.useCurrentLocation(UITestMode.start) }
+                    } else {
+                        location.request()
+                        if let loc = location.location { model.useCurrentLocation(loc) }
+                    }
                 } label: {
                     Circle().fill(Theme.red).frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Use my location")
+                .accessibilityHint("Searches near your current location")
+                .accessibilityIdentifier("header.locate")
             }
             SearchField()
         }
         .padding(2 * Theme.unit)
     }
 
-    private var mapPane: some View {
-        Map(position: $camera) {
-            UserAnnotation()
-            ForEach(model.restrooms) { r in
-                Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
-                    Pin(selected: model.selected?.id == r.id)
-                        .onTapGesture { model.selected = r }
+    /// Without a centre (location denied, nothing searched) a world map is noise; show paper instead.
+    @ViewBuilder private var mapPane: some View {
+        if model.center == nil {
+            Text("Search a place to see restrooms on the map.")
+                .font(Theme.font(.mono)).foregroundStyle(Theme.graphite)
+                .multilineTextAlignment(.center)
+                .padding(2 * Theme.unit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityIdentifier("map.placeholder")
+        } else {
+            Map(position: $camera) {
+                UserAnnotation()
+                ForEach(model.restrooms) { r in
+                    Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
+                        Button { model.selected = r } label: {
+                            Pin(selected: model.selected?.id == r.id)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(r.name.isEmpty ? "Restroom" : r.name)
+                        .accessibilityHint("Shows details")
+                        .accessibilityAddTraits(model.selected?.id == r.id ? .isSelected : [])
+                        .accessibilityIdentifier("pin.\(r.id)")
+                    }
+                    .annotationTitles(.hidden)
                 }
-                .annotationTitles(.hidden)
             }
+            .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+            .mapControlVisibility(.hidden)
+            .accessibilityLabel("Map of nearby restrooms")
+            .accessibilityIdentifier("map")
         }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .mapControlVisibility(.hidden)
     }
 }
 
 /// Map marker: paper tile, hairline ink border, restroom pictogram (head + body). Selected = red tile.
+/// Visual tile is 26/32 pt; the hit target is padded to 44 pt.
 private struct Pin: View {
     let selected: Bool
 
@@ -104,6 +146,8 @@ private struct Pin: View {
             }
         }
         .frame(width: side, height: side)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
 
@@ -118,10 +162,16 @@ private struct SearchField: View {
                     .submitLabel(.search)
                     .autocorrectionDisabled()
                     .onSubmit { Task { await model.search(model.query) } }
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Search a place")
+                    .accessibilityIdentifier("search.field")
                 if !model.query.isEmpty {
                     Button("×") { model.query = "" }
                         .themed(.title)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                         .accessibilityLabel("Clear search")
+                        .accessibilityIdentifier("search.clear")
                 }
             }
             Hairline()
@@ -137,13 +187,13 @@ private struct ResultList: View {
         List {
             switch model.state {
             case .loading:
-                note("Loading…")
+                note("Loading…").accessibilityLabel("Loading restrooms")
             case .empty:
                 note("No restrooms within range.")
             case .failed(let msg):
                 VStack(alignment: .leading, spacing: Theme.unit) {
-                    Text(msg).themed(.body)
-                    Button("Retry") { model.reload() }.font(Theme.font(.title)).foregroundStyle(Theme.red)
+                    Text(msg).themed(.body).accessibilityIdentifier("state.message")
+                    action("Retry", id: "state.retry") { model.reload() }
                 }
                 .listRowBackground(Theme.paper)
                 .listRowSeparatorTint(Theme.line)
@@ -151,10 +201,10 @@ private struct ResultList: View {
                 if location.authorization == .denied || location.authorization == .restricted {
                     VStack(alignment: .leading, spacing: Theme.unit) {
                         Text("Location is off. Search a place above or enable it in Settings.").themed(.body)
-                        Button("Open Settings") {
+                            .accessibilityIdentifier("state.message")
+                        action("Open Settings", id: "state.settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                         }
-                        .font(Theme.font(.title)).foregroundStyle(Theme.red)
                     }
                     .listRowBackground(Theme.paper)
                     .listRowSeparatorTint(Theme.line)
@@ -163,9 +213,9 @@ private struct ResultList: View {
                 }
             case .loaded:
                 ForEach(model.restrooms) { r in
-                    RestroomRow(restroom: r)
-                        .contentShape(Rectangle())
-                        .onTapGesture { model.selected = r }
+                    Button { model.selected = r } label: { RestroomRow(restroom: r) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("row.\(r.id)")
                         .listRowBackground(Theme.paper)
                         .listRowSeparatorTint(Theme.line)
                         .listRowInsets(EdgeInsets(top: 2 * Theme.unit, leading: 2 * Theme.unit, bottom: 2 * Theme.unit, trailing: 2 * Theme.unit))
@@ -175,36 +225,85 @@ private struct ResultList: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Theme.paper)
+        .accessibilityIdentifier("list")
     }
 
     private func note(_ s: String) -> some View {
         Text(s).font(Theme.font(.mono)).foregroundStyle(Theme.graphite)
+            .accessibilityIdentifier("state.note")
             .listRowBackground(Theme.paper)
             .listRowSeparatorTint(Theme.line)
+    }
+
+    private func action(_ title: String, id: String, _ perform: @escaping () -> Void) -> some View {
+        Button(title, action: perform)
+            .font(Theme.font(.title)).foregroundStyle(Theme.red)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier(id)
     }
 }
 
 private struct RestroomRow: View {
     let restroom: Restroom
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var withoutColor
+
+    private var name: String { restroom.name.isEmpty ? "Restroom" : restroom.name }
+
+    private var voiceOverLabel: String {
+        let amenities = restroom.amenities.isEmpty ? "no amenity details" : restroom.amenities.map(\.title).joined(separator: ", ")
+        return [name, restroom.addressLine, restroom.distanceSpoken ?? "", amenities]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 2 * Theme.unit) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(restroom.name.isEmpty ? "Restroom" : restroom.name).themed(.title).lineLimit(1)
-                if !restroom.addressLine.isEmpty {
-                    Text(restroom.addressLine).font(Theme.font(.body)).foregroundStyle(Theme.graphite).lineLimit(1)
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    text
+                    distance
                 }
-                if !restroom.amenities.isEmpty {
+            } else {
+                HStack(alignment: .top, spacing: 2 * Theme.unit) {
+                    text
+                    Spacer(minLength: Theme.unit)
+                    distance
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(voiceOverLabel)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Shows details and directions")
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(name).themed(.title)
+            if !restroom.addressLine.isEmpty {
+                Text(restroom.addressLine).font(Theme.font(.body)).foregroundStyle(Theme.graphite)
+            }
+            if !restroom.amenities.isEmpty {
+                if withoutColor {
+                    Text(restroom.amenities.map(\.title).joined(separator: " · ")).themed(.label).padding(.top, 4)
+                } else {
                     HStack(spacing: Theme.unit) {
                         ForEach(restroom.amenities, id: \.self) { Badge(kind: $0, size: 12) }
                     }
                     .padding(.top, 4)
+                    .accessibilityHidden(true)
                 }
             }
-            Spacer(minLength: Theme.unit)
-            if let d = restroom.distanceText {
-                Text(d).themed(.mono)
-            }
+        }
+    }
+
+    @ViewBuilder private var distance: some View {
+        if let d = restroom.distanceText {
+            Text(d).themed(.mono)
         }
     }
 }

@@ -61,15 +61,19 @@ Restroom/
 ├── Model/
 │   ├── Restroom.swift        API model + addressLine / amenities / distanceText
 │   ├── RefugeAPI.swift       actor; RestroomProvider protocol; RefugeError
+│   ├── PlaceResolver.swift   MKLocalSearch behind a protocol
 │   ├── LocationService.swift CLLocationManager wrapper (one-shot, when-in-use)
-│   └── FinderModel.swift     all state: center, restrooms, LoadState, selection, search
+│   ├── FinderModel.swift     all state: center, restrooms, LoadState, selection, search
+│   └── UITestSupport.swift   `-uitest` fixtures: 4 restrooms, fixed place, no network
 └── UI/
-    ├── RestroomApp.swift     @main
+    ├── RestroomApp.swift     @main; swaps in fixtures under `-uitest`
     ├── FinderView.swift      header, search field, map pane, result list, pins
     └── DetailView.swift      sheet with Directions / Copy address
 RestroomTests/
 ├── RestroomDecodingTests.swift   decodes a fixture captured from the live API
 └── FinderModelTests.swift        state transitions through a FakeProvider
+RestroomUITests/
+└── RestroomUITests.swift         XCUITest end-to-end flows + accessibility audits
 ```
 
 Views are dumb. `FinderModel` owns every transition:
@@ -88,6 +92,7 @@ Requires **Xcode 26** and [xcodegen](https://github.com/yonaskolb/XcodeGen) (`br
 
 ```sh
 make test     # generate project, run unit tests on the iPhone 17 Pro simulator
+make uitest   # end-to-end XCUITest suite (every screen, plus Apple's accessibility audit)
 make sim      # build, install and launch on the booted simulator
 ```
 
@@ -111,11 +116,17 @@ If `make device` reports *developer disk image could not be mounted*, the phone 
 ## Tests
 
 ```sh
-make test
+make test     # unit
+make uitest   # end-to-end on the simulator
 ```
 
 - **Decoding** — a two-entry fixture copied verbatim from the API (including the string-typed `bearing` and `distance` in miles) decodes to the expected amenities, metres, and address line; empty street segments are omitted.
 - **Model** — empty result → `.empty`; offline error → `.failed("You're offline")`; a location fix relabels to "Near you" and loads; `reload()` without a centre stays `.idle`.
+- **End-to-end** — launched with `-uitest`, the app uses `FixtureProvider` (four restrooms around Apple Park), `FixtureResolver` ("Union Square" for any query) and a simulated location authorisation, so nothing touches the network or CoreLocation. Flags: `-uitest-empty`, `-uitest-fail`, `-uitest-noplace`, `-uitest-denied`. Twelve tests drive the sorted list, row and pin taps, search, every error state, and run `performAccessibilityAudit` on home, detail, error, denied, and at the AccessibilityXXXL text size. Only MapKit's own elements (attribution, compass) are exempt from the audit.
+
+## Accessibility
+
+Targets WCAG 2.1 AA as applied to native apps (ADA): every type style is a Dynamic Type text style, so the whole UI scales to the accessibility sizes (rows switch to a stacked layout, nothing truncates); all tap targets are ≥ 44 × 44 pt; rows and pins are real buttons with a single spoken label ("Happy Lemon, 10963 N Wolfe Road, Cupertino, CA, 0.4 miles, Accessible") and hints; headers carry the header trait; amenity shapes are supplementary to text (and rows switch to text under *Differentiate Without Colour*); text contrast is ≥ 4.5:1 in both appearances; *Reduce Motion* recentres the map without animation.
 
 ## Licence
 
