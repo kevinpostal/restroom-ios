@@ -8,6 +8,11 @@ struct FinderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var usedFirstFix = false
+    /// Last camera region reported by the map; zoom buttons scale it. nil until the map has laid out.
+    @State private var region: MKCoordinateRegion?
+
+    /// Zoom limits as latitude span (degrees): ~110 m to ~170 km.
+    private static let minSpan = 0.001, maxSpan = 1.5
 
     var body: some View {
         GeometryReader { geo in
@@ -50,12 +55,32 @@ struct FinderView: View {
     }
 
     private func move(to c: CLLocationCoordinate2D, span: CLLocationDistance) {
-        let region = MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span)
+        set(MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span))
+    }
+
+    private func zoom(by factor: Double) {
+        guard var r = region else { return }
+        let f = min(max(factor, Self.minSpan / r.span.latitudeDelta), Self.maxSpan / r.span.latitudeDelta)
+        guard f != 1 else { return }
+        r.span.latitudeDelta *= f
+        r.span.longitudeDelta *= f
+        set(r)
+    }
+
+    private func set(_ region: MKCoordinateRegion) {
         if reduceMotion {
             camera = .region(region)
         } else {
             withAnimation { camera = .region(region) }
         }
+    }
+
+    /// Spoken/testable width of the visible map, e.g. "0.9 mi".
+    private var spanText: String {
+        guard let r = region else { return "" }
+        let meters = r.span.latitudeDelta * 111_000
+        return Measurement(value: meters, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road)) + " across"
     }
 
     private var header: some View {
@@ -119,9 +144,37 @@ struct FinderView: View {
             }
             .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
             .mapControlVisibility(.hidden)
+            .onMapCameraChange(frequency: .continuous) { region = $0.region }
             .accessibilityLabel("Map of nearby restrooms")
+            .accessibilityValue(spanText)
             .accessibilityIdentifier("map")
+            .overlay(alignment: .topTrailing) { zoomControls.padding(Theme.unit) }
         }
+    }
+
+    /// Two stacked paper tiles, hairline ink border, + / − glyphs. Each at least 44 pt.
+    private var zoomControls: some View {
+        VStack(spacing: 0) {
+            zoomButton("+", label: "Zoom in", id: "map.zoomIn") { zoom(by: 0.5) }
+            Rectangle().fill(Theme.ink).frame(height: 1)
+            zoomButton("−", label: "Zoom out", id: "map.zoomOut") { zoom(by: 2) }
+        }
+        .background(Theme.paper)
+        .overlay(Rectangle().strokeBorder(Theme.ink, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func zoomButton(_ glyph: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(glyph)
+                .font(Theme.font(.title))
+                .foregroundStyle(Theme.ink)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 }
 

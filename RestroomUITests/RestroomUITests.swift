@@ -155,6 +155,22 @@ final class RestroomUITests: XCTestCase {
         XCTAssertFalse(app.buttons["pin.3"].isSelected)
     }
 
+    func testZoomButtonsChangeMapSpan() {
+        let app = launch()
+        let map = app.otherElements["map"].firstMatch
+        XCTAssertTrue(app.buttons["pin.1"].waitForExistence(timeout: wait))
+        let start = map.value as? String ?? ""
+        XCTAssertTrue(start.hasSuffix("across"), "map exposes its span, got \"\(start)\"")
+        app.buttons["map.zoomIn"].tap()
+        let zoomedIn = expectation(for: NSPredicate(format: "value != %@", start), evaluatedWith: map)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomedIn], timeout: wait), .completed, "zoom in changes span")
+        let mid = map.value as? String ?? ""
+        app.buttons["map.zoomOut"].tap()
+        let zoomedOut = expectation(for: NSPredicate(format: "value != %@", mid), evaluatedWith: map)
+        XCTAssertEqual(XCTWaiter().wait(for: [zoomedOut], timeout: wait), .completed, "zoom out changes span")
+        XCTAssertTrue(app.buttons["pin.1"].isHittable, "pins survive zooming")
+    }
+
     // MARK: - Accessibility audits
 
     func testAccessibilityAuditHome() {
