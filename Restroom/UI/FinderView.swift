@@ -33,12 +33,20 @@ struct FinderView: View {
         }
         .onChange(of: model.center?.latitude) { _, _ in recenter() }
         .onChange(of: model.center?.longitude) { _, _ in recenter() }
+        .onChange(of: model.selected?.id) { _, _ in
+            guard let r = model.selected else { return }
+            move(to: r.coordinate, span: 600)
+        }
     }
 
     private func recenter() {
         guard let c = model.center else { return }
+        move(to: c, span: 1500)
+    }
+
+    private func move(to c: CLLocationCoordinate2D, span: CLLocationDistance) {
         withAnimation {
-            camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: 1500, longitudinalMeters: 1500))
+            camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: span, longitudinalMeters: span))
         }
     }
 
