@@ -81,6 +81,12 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(app.buttons["detail.directions"].isHittable)
         XCTAssertTrue(app.staticTexts["Unisex"].exists)
         XCTAssertTrue(app.buttons["pin.2"].isSelected)
+        XCTAssertTrue(app.otherElements["map"].firstMatch.isHittable, "map stays visible with detail open")
+        XCTAssertTrue(app.buttons["pin.2"].isHittable)
+        app.buttons["detail.close"].tap()
+        XCTAssertTrue(row(app, 2).waitForExistence(timeout: wait))
+        XCTAssertFalse(app.staticTexts["detail.name"].exists)
+        XCTAssertFalse(app.buttons["pin.2"].isSelected)
     }
 
     func testSearchRelabelsHeaderAndReloads() {
@@ -143,6 +149,10 @@ final class RestroomUITests: XCTestCase {
         let name = app.staticTexts["detail.name"]
         XCTAssertTrue(name.waitForExistence(timeout: wait))
         XCTAssertEqual(name.label, "Library")
+        app.buttons["pin.1"].tap()
+        waitLabel(app.staticTexts["detail.name"], "Happy Lemon")
+        XCTAssertTrue(app.buttons["pin.1"].isSelected)
+        XCTAssertFalse(app.buttons["pin.3"].isSelected)
     }
 
     // MARK: - Accessibility audits

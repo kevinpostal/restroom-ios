@@ -15,8 +15,9 @@ struct FixtureProvider: RestroomProvider {
         if UITestMode.flag("-uitest-fail") { throw RefugeError.offline }
         if UITestMode.flag("-uitest-empty") { return [] }
         return [
+            // Within ~250 m of Library so both pins share the 600 m selected-pin viewport (pin-to-pin UI test).
             Restroom(id: 1, name: "Happy Lemon", street: "10963 N Wolfe Road", city: "Cupertino", state: "CA",
-                     accessible: true, latitude: 37.3370, longitude: -122.0130, distanceMiles: 0.4),
+                     accessible: true, latitude: 37.3372, longitude: -122.0075, distanceMiles: 0.4),
             Restroom(id: 2, name: "Kaiser Hospital", street: "10992 N De Anza Blvd", city: "Cupertino", state: "CA",
                      accessible: true, unisex: true, latitude: 37.3320, longitude: -122.0040, distanceMiles: 0.6),
             Restroom(id: 3, name: "Library", street: "10800 Torre Ave", city: "Cupertino", state: "CA",

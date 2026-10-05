@@ -8,7 +8,6 @@ struct FinderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var usedFirstFix = false
-    @State private var detent: PresentationDetent = .large
 
     var body: some View {
         GeometryReader { geo in
@@ -17,16 +16,15 @@ struct FinderView: View {
                 Hairline()
                 mapPane.frame(height: geo.size.height * 0.44)
                 Hairline()
-                ResultList()
+                if let r = model.selected {
+                    DetailView(restroom: r, close: { model.selected = nil })
+                        .id(r.id) // fresh ScrollView offset when switching pins
+                } else {
+                    ResultList()
+                }
             }
         }
         .background(Theme.paper.ignoresSafeArea())
-        .sheet(item: $model.selected) { r in
-            DetailView(restroom: r)
-                .presentationDetents([.medium, .large], selection: $detent)
-                .presentationDragIndicator(.visible)
-                .presentationBackground(Theme.paper)
-        }
         .task {
             if UITestMode.isActive {
                 if !UITestMode.flag("-uitest-denied") { model.useCurrentLocation(UITestMode.start) }
@@ -42,9 +40,7 @@ struct FinderView: View {
         .onChange(of: model.center?.latitude) { _, _ in recenter() }
         .onChange(of: model.center?.longitude) { _, _ in recenter() }
         .onChange(of: model.selected?.id) { _, _ in
-            guard let r = model.selected else { return }
-            detent = .large
-            move(to: r.coordinate, span: 600)
+            if let r = model.selected { move(to: r.coordinate, span: 600) } else { recenter() }
         }
     }
 

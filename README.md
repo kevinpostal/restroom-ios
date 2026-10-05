@@ -21,8 +21,8 @@
 
 - **Nearby** — on launch, asks for your location once and lists every restroom within range, closest first.
 - **Anywhere** — type a place ("Union Square San Francisco", "Penn Station") and the map and list jump there. Resolution is done on-device with `MKLocalSearch`; the restroom query then runs against that coordinate.
-- **Map + list, always both** — a flat Apple Maps pane shows pictogram pins; the list below carries name, address, distance, and amenity marks. Tap either to open the detail sheet.
-- **Detail** — accessibility, unisex, changing-table flags; how to find it ("back left, past the register"); community notes; vote tally; copy-address; and a full-width **Directions** bar that opens Apple Maps in walking mode.
+- **Map + list, always both** — a flat Apple Maps pane shows pictogram pins; the list below carries name, address, distance, and amenity marks. Tap either and the map centres on that pin while the list pane swaps to the detail; the map is never covered.
+- **Detail** — accessibility, unisex, changing-table flags; how to find it ("back left, past the register"); community notes; vote tally; copy-address; a full-width **Directions** bar that opens Apple Maps in walking mode; and **← Nearby** to return to the list.
 - **Honest states** — "Finding you…", "Loading…", "No restrooms within range.", a plain error with **Retry**, and if location is off, a one-line explanation with **Open Settings**. Search still works without location.
 
 No accounts, no tracking, no analytics, no network calls other than the restroom query and Apple Maps.

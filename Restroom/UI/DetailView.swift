@@ -3,15 +3,26 @@ import SwiftUI
 
 struct DetailView: View {
     let restroom: Restroom
+    let close: () -> Void
+    @AccessibilityFocusState private var nameFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2 * Theme.unit) {
+                    Button(action: close) {
+                        Text("← Nearby").font(Theme.font(.title)).foregroundStyle(Theme.red)
+                            .frame(minHeight: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to list")
+                    .accessibilityHint("Shows the nearby restrooms again")
+                    .accessibilityIdentifier("detail.close")
                     Text("Restroom").themed(.label)
                     Text(restroom.name.isEmpty ? "Restroom" : restroom.name).themed(.display)
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("detail.name")
+                        .accessibilityFocused($nameFocused)
                     if !restroom.addressLine.isEmpty { Text(restroom.addressLine).themed(.body) }
                     if let d = restroom.distanceText {
                         Text(d).themed(.mono).accessibilityLabel(restroom.distanceSpoken ?? d)
@@ -54,7 +65,6 @@ struct DetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(2 * Theme.unit)
-                .padding(.top, 2 * Theme.unit)
             }
             Button(action: openDirections) {
                 Text("Directions")
@@ -67,6 +77,7 @@ struct DetailView: View {
             .accessibilityIdentifier("detail.directions")
         }
         .background(Theme.paper)
+        .onAppear { nameFocused = true }
     }
 
     private func openDirections() {
