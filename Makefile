@@ -1,7 +1,7 @@
 export DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
 SIM := platform=iOS Simulator,name=iPhone 17 Pro
 APP := com.kevinpostal.restroom
-UDID ?= $(shell xcrun devicectl list devices 2>/dev/null | awk '/iPhone/ {print $$3}' | head -1)
+UDID ?= $(shell DEVELOPER_DIR=$(DEVELOPER_DIR) xcrun devicectl list devices 2>/dev/null | awk '/iPhone/ {print $$3}' | head -1)
 
 .PHONY: gen build test sim device
 
