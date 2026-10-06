@@ -13,6 +13,7 @@ enum UITestMode {
 struct FixtureProvider: RestroomProvider {
     func nearby(_ center: CLLocationCoordinate2D, perPage: Int) async throws -> [Restroom] {
         if UITestMode.flag("-uitest-fail") { throw RefugeError.offline }
+        if UITestMode.flag("-uitest-slow") { try await Task.sleep(for: .seconds(3)) }   // lets tests see the loading ring
         if UITestMode.flag("-uitest-empty") { return [] }
         return [
             // Within ~250 m of Library so both pins share the 600 m selected-pin viewport (pin-to-pin UI test).

@@ -49,6 +49,25 @@ struct Hairline: View {
     var body: some View { Rectangle().fill(Theme.line).frame(height: 1) }
 }
 
+/// Ink ring, 32 pt: closed at rest; while `busy` it opens to a three-quarter arc and turns once a second
+/// (holds still under Reduce Motion). Doubles as the refresh glyph and the loading indicator.
+struct LoadingRing: View {
+    let busy: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var turning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: busy ? 0.75 : 1)
+            .stroke(Theme.ink, lineWidth: 1.5)
+            .frame(width: 32, height: 32)
+            .rotationEffect(.degrees(turning ? 360 : 0))
+            .animation(busy && !reduceMotion ? .linear(duration: 1).repeatForever(autoreverses: false) : .linear(duration: 0.2), value: turning)
+            .animation(.linear(duration: 0.2), value: busy)
+            .onChange(of: busy, initial: true) { _, b in turning = b && !reduceMotion }
+    }
+}
+
 enum Amenity: CaseIterable, Equatable {
     case accessible, unisex, changingTable
 

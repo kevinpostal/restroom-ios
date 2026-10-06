@@ -118,6 +118,7 @@ struct FinderView: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("header.title")
                 Spacer()
+                refreshButton
                 locateButton
             }
             .padding(.horizontal, 2 * Theme.unit).padding(.vertical, Theme.unit)
@@ -152,6 +153,20 @@ struct FinderView: View {
         .accessibilityLabel("Use my location")
         .accessibilityHint("Searches near your current location")
         .accessibilityIdentifier("map.locate")
+    }
+
+    /// Hairline ring: a full circle at rest, a turning three-quarter arc while a fetch is in flight.
+    private var refreshButton: some View {
+        Button { model.refresh() } label: {
+            LoadingRing(busy: model.busy)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Refresh")
+        .accessibilityValue(model.busy ? "Loading" : "")
+        .accessibilityHint("Searches this area again")
+        .accessibilityIdentifier("header.refresh")
     }
 
     /// Map is always visible (convention); the no-centre message lives in the sheet's ResultList.

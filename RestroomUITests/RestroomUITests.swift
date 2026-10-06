@@ -126,6 +126,21 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
     }
 
+    func testRefreshShowsLoadingRingAndKeepsRows() {
+        let app = launch("-uitest-slow")
+        let refresh = app.buttons["header.refresh"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: wait))
+        XCTAssertEqual(refresh.value as? String, "Loading")
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        XCTAssertEqual(refresh.value as? String, "")
+        refresh.tap()
+        XCTAssertEqual(refresh.value as? String, "Loading")
+        XCTAssertTrue(row(app, 1).exists, "rows stay on screen while refreshing")
+        let idle = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "value == ''"), evaluatedWith: refresh)], timeout: wait)
+        XCTAssertEqual(idle, .completed)
+        XCTAssertTrue(row(app, 1).exists)
+    }
+
     func testSearchFocusExpandsSheet() {
         let app = launch()
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))

@@ -14,6 +14,8 @@ final class FinderModel: ObservableObject {
     @Published var state: LoadState = .idle
     @Published var selected: Restroom?
     @Published var query: String = ""
+    /// True while a network fetch for the current centre is in flight (cache hits never set it).
+    @Published private(set) var busy = false
 
     private let api: RestroomProvider
     private let pins: PinProvider
@@ -66,9 +68,17 @@ final class FinderModel: ObservableObject {
     /// Refuge caps pages at 100 and answers them as fast as 50; a bigger page covers more of the ring per round-trip.
     static let pageSize = 100
 
+    /// Refresh button: drop the cached page for this spot and fetch it again, keeping rows on screen.
+    func refresh() {
+        guard let center else { return }
+        cache[Cell(center)] = nil
+        reload(keepingResults: true)
+    }
+
     func reload(keepingResults: Bool = false) {
         guard let center else { return }
         inflight?.cancel()
+        busy = false
         let cell = Cell(center)
         if let hit = cache[cell], Date().timeIntervalSince(hit.at) < Self.cacheTTL {
             inflight = Task { await publish(around: center) }
@@ -80,7 +90,9 @@ final class FinderModel: ObservableObject {
         let now = Date()
         let nearbyCached = keepingResults && cell.ring.contains { cache[$0].map { now.timeIntervalSince($0.at) < Self.cacheTTL } ?? false }
         if !(keepingResults && state == .loaded) { state = .loading }
+        busy = true
         inflight = Task { [api] in
+            defer { if !Task.isCancelled { busy = false } }
             do {
                 // Neighbouring pages give approximately-right rows at once; the fetch below replaces them.
                 if nearbyCached { await publish(around: center) }

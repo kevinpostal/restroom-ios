@@ -119,6 +119,25 @@ final class FinderModelTests: XCTestCase {
         XCTAssertEqual(second, 0, "cache hit: no fetch for the panned centre")
     }
 
+    func testRefreshBypassesCacheAndReportsBusy() async {
+        let api = CountingProvider { _ in [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0)] }
+        let m = FinderModel(api: api, pins: noPins)
+        m.useCurrentLocation(here)
+        XCTAssertTrue(m.busy)
+        await m.settle()
+        XCTAssertFalse(m.busy)
+        m.reload()                                  // same cell → cache hit, no fetch, never busy
+        XCTAssertFalse(m.busy)
+        await m.settle()
+        m.refresh()
+        XCTAssertTrue(m.busy)
+        XCTAssertEqual(m.state, .loaded, "rows stay while refreshing")
+        await m.settle()
+        XCTAssertFalse(m.busy)
+        let fetches = await api.calls(near: here.coordinate)
+        XCTAssertEqual(fetches, 2)
+    }
+
     func testPanIntoPrefetchedNeighbourUnionsPages() async {
         // Each page carries one restroom at its fetch centre, so a neighbour's page is distinguishable.
         let api = CountingProvider { c in [Restroom(id: Int(c.latitude * 1e4) &* 31 &+ Int(c.longitude * 1e4), name: "at", latitude: c.latitude, longitude: c.longitude)] }
