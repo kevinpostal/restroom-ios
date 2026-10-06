@@ -1,7 +1,8 @@
 import CoreLocation
 import Foundation
 
-struct Restroom: Identifiable, Decodable, Equatable {
+/// `Encodable` (synthesised over `CodingKeys`, so `pin` is never written) lets the tile cache persist pages.
+struct Restroom: Identifiable, Codable, Equatable {
     let id: Int
     let name: String
     let street: String

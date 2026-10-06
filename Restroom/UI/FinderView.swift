@@ -177,6 +177,8 @@ struct FinderView: View {
                 Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
                     Button { model.selected = r } label: {
                         Pin(selected: model.selected?.id == r.id)
+                            .opacity(model.busy ? 0.35 : 1)   // these pins are the old area until the fetch lands
+                            .animation(.linear(duration: 0.2), value: model.busy)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(r.name.isEmpty ? "Restroom" : r.name)

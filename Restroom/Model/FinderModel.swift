@@ -25,19 +25,29 @@ final class FinderModel: ObservableObject {
     /// Refuge and PottyPins geocode independently; 75 m covers a storefront without bleeding into the next block.
     static let pinMatchMeters: CLLocationDistance = 75
 
-    /// Pages of nearest-50 results keyed by the ~1 km grid cell they were fetched in. A load unions the
-    /// centre cell with its 8 neighbours and re-ranks locally, so a pan into prefetched ground is instant.
-    private var cache: [Cell: (list: [Restroom], at: Date)] = [:]
+    /// Pages of nearest results keyed by the ~1 km grid cell they were fetched in. A load unions the centre
+    /// cell with its 8 neighbours and re-ranks locally, so a pan into cached ground is instant.
+    /// Fresh (< 10 min) pages are final; older ones up to a day are shown at once and refetched behind them.
+    private var cache: [Cell: TileStore.Entry] = [:]
+    private let store: TileStore?
     private var prefetching: Task<Void, Never>?
-    static let cacheTTL: TimeInterval = 10 * 60
+    static let freshTTL: TimeInterval = 10 * 60
+    static let serveTTL: TimeInterval = 24 * 60 * 60
 
     init(api: RestroomProvider = RefugeAPI.shared, pins: PinProvider = PottyPinsAPI.shared,
-         places: PlaceResolver = LocalSearchResolver()) {
+         places: PlaceResolver = LocalSearchResolver(), store: TileStore? = .disk) {
         self.api = api
         self.pins = pins
         self.places = places
+        self.store = store
+        let now = Date()
+        cache = (store?.load() ?? [:]).filter { now.timeIntervalSince($0.value.at) < Self.serveTTL }
         Task { _ = try? await pins.pins() }   // warm the door-code cache before the first results land
     }
+
+    private func age(_ cell: Cell) -> TimeInterval? { cache[cell].map { Date().timeIntervalSince($0.at) } }
+    private func isFresh(_ cell: Cell) -> Bool { age(cell).map { $0 < Self.freshTTL } ?? false }
+    private func isServable(_ cell: Cell) -> Bool { age(cell).map { $0 < Self.serveTTL } ?? false }
 
     func useCurrentLocation(_ loc: CLLocation) {
         center = loc.coordinate
@@ -80,22 +90,21 @@ final class FinderModel: ObservableObject {
         inflight?.cancel()
         busy = false
         let cell = Cell(center)
-        if let hit = cache[cell], Date().timeIntervalSince(hit.at) < Self.cacheTTL {
+        if isFresh(cell) {
             inflight = Task { await publish(around: center) }
             prefetch(around: cell)
             return
         }
         // Refuge serialises requests per client; stop background fetches so this one isn't queued behind them.
         prefetching?.cancel()
-        let now = Date()
-        let nearbyCached = keepingResults && cell.ring.contains { cache[$0].map { now.timeIntervalSince($0.at) < Self.cacheTTL } ?? false }
-        if !(keepingResults && state == .loaded) { state = .loading }
+        // Stale-but-servable pages (this cell, or neighbours when panning) go on screen now; the fetch replaces them.
+        let canServe = isServable(cell) || (keepingResults && cell.ring.contains { isServable($0) })
+        if !canServe && !(keepingResults && state == .loaded) { state = .loading }
         busy = true
         inflight = Task { [api] in
             defer { if !Task.isCancelled { busy = false } }
             do {
-                // Neighbouring pages give approximately-right rows at once; the fetch below replaces them.
-                if nearbyCached { await publish(around: center) }
+                if canServe { await publish(around: center) }
                 let page = try await api.nearby(center, perPage: Self.pageSize)
                 guard !Task.isCancelled else { return }
                 store(page, in: cell)
@@ -103,25 +112,25 @@ final class FinderModel: ObservableObject {
                 prefetch(around: cell)
             } catch {
                 guard !Task.isCancelled else { return }
-                state = .failed(error.localizedDescription)
+                if restrooms.isEmpty || !canServe { state = .failed(error.localizedDescription) }
             }
         }
     }
 
     private func store(_ page: [Restroom], in cell: Cell) {
         let now = Date()
-        cache = cache.filter { now.timeIntervalSince($0.value.at) < Self.cacheTTL }
-        cache[cell] = (page, now)
+        cache = cache.filter { now.timeIntervalSince($0.value.at) < Self.serveTTL }
+        cache[cell] = .init(at: now, list: page)
+        store?.save(cache)
     }
 
-    /// Union of fresh pages for the centre cell and its ring, ranked by distance from `center`, then door codes.
+    /// Union of servable pages for the centre cell and its ring, ranked by distance from `center`, then door codes.
     private func publish(around center: CLLocationCoordinate2D) async {
         let cell = Cell(center)
-        let now = Date()
         var seen = Set<Int>()
         var pool: [Restroom] = []
         for c in [cell] + cell.ring {
-            guard let hit = cache[c], now.timeIntervalSince(hit.at) < Self.cacheTTL else { continue }
+            guard isServable(c), let hit = cache[c] else { continue }
             for r in hit.list where seen.insert(r.id).inserted { pool.append(r) }
         }
         let result = Self.rank(pool, from: center)
@@ -136,8 +145,7 @@ final class FinderModel: ObservableObject {
     /// Fetches the ring cells not yet cached, one at a time at utility priority; a new reload restarts it.
     private func prefetch(around cell: Cell) {
         prefetching?.cancel()
-        let now = Date()
-        let missing = cell.ring.filter { cache[$0].map { now.timeIntervalSince($0.at) >= Self.cacheTTL } ?? true }
+        let missing = cell.ring.filter { !isFresh($0) }
         guard !missing.isEmpty else { return }
         prefetching = Task(priority: .utility) { [api] in
             for c in missing {
@@ -200,7 +208,7 @@ struct Cell: Hashable {
         x = Int((c.latitude / Self.size).rounded())
         y = Int((c.longitude / Self.size).rounded())
     }
-    private init(x: Int, y: Int) { self.x = x; self.y = y }
+    init(x: Int, y: Int) { self.x = x; self.y = y }
 
     var center: CLLocationCoordinate2D {
         .init(latitude: Double(x) * Self.size, longitude: Double(y) * Self.size)

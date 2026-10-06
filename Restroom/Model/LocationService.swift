@@ -23,7 +23,10 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         guard simulated == nil else { return }
         switch manager.authorizationStatus {
         case .notDetermined: manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways: manager.requestLocation()
+        case .authorizedWhenInUse, .authorizedAlways:
+            // Head start: the system's last fix (often seconds old from another app) beats waiting 1–3 s for ours.
+            if location == nil, let last = manager.location, -last.timestamp.timeIntervalSinceNow < 120 { location = last }
+            manager.requestLocation()
         default: break
         }
     }
