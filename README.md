@@ -21,8 +21,8 @@
 
 - **Nearby** — on launch, asks for your location once and lists every restroom within range, closest first.
 - **Anywhere** — type a place ("Union Square San Francisco", "Penn Station") and the map and list jump there. Resolution is done on-device with `MKLocalSearch`; the restroom query then runs against that coordinate.
-- **Map + list, always both** — a flat Apple Maps pane shows pictogram pins; the list below carries name, address, distance, and amenity marks. Tap either and the map centres on that pin while the list pane swaps to the detail; the map is never covered.
-- **Detail** — accessibility, unisex, changing-table flags; how to find it ("back left, past the register"); community notes; vote tally; copy-address; a full-width **Directions** bar that opens Apple Maps in walking mode; and **← Nearby** to return to the list.
+- **Map behind a sheet** — the conventional map-app layout: a flat, edge-to-edge Apple Maps view with pictogram pins and +/− zoom tiles, and a square-cornered paper sheet over its lower half holding search, the place title, and the list (name, address, distance, amenity marks). Drag the sheet down to a search-only strip or up to full height; focusing search expands it. Tap a row or a pin and the map centres that pin in the band above the sheet while the sheet becomes the place card.
+- **Place card** — name with **×** to return; accessibility, unisex, changing-table flags; how to find it ("back left, past the register"); community notes; vote tally; copy-address; a full-width **Directions** bar pinned to the bottom that opens Apple Maps in walking mode.
 - **Honest states** — "Finding you…", "Loading…", "No restrooms within range.", a plain error with **Retry**, and if location is off, a one-line explanation with **Open Settings**. Search still works without location.
 
 No accounts, no tracking, no analytics, no network calls other than the restroom query and Apple Maps.
@@ -67,8 +67,9 @@ Restroom/
 │   └── UITestSupport.swift   `-uitest` fixtures: 4 restrooms, fixed place, no network
 └── UI/
     ├── RestroomApp.swift     @main; swaps in fixtures under `-uitest`
-    ├── FinderView.swift      header, search field, map pane, result list, pins
-    └── DetailView.swift      sheet with Directions / Copy address
+    ├── FinderView.swift      full-bleed map, zoom tiles, sheet header (search, title, locate), result list, pins
+    ├── BottomSheet.swift     edge-to-edge paper panel with collapsed / half / full detents
+    └── DetailView.swift      place-card header (name, ×) and scrolling details with the Directions bar
 RestroomTests/
 ├── RestroomDecodingTests.swift   decodes a fixture captured from the live API
 └── FinderModelTests.swift        state transitions through a FakeProvider
@@ -122,7 +123,7 @@ make uitest   # end-to-end on the simulator
 
 - **Decoding** — a two-entry fixture copied verbatim from the API (including the string-typed `bearing` and `distance` in miles) decodes to the expected amenities, metres, and address line; empty street segments are omitted.
 - **Model** — empty result → `.empty`; offline error → `.failed("You're offline")`; a location fix relabels to "Near you" and loads; `reload()` without a centre stays `.idle`.
-- **End-to-end** — launched with `-uitest`, the app uses `FixtureProvider` (four restrooms around Apple Park), `FixtureResolver` ("Union Square" for any query) and a simulated location authorisation, so nothing touches the network or CoreLocation. Flags: `-uitest-empty`, `-uitest-fail`, `-uitest-noplace`, `-uitest-denied`. Twelve tests drive the sorted list, row and pin taps, search, every error state, and run `performAccessibilityAudit` on home, detail, error, denied, and at the AccessibilityXXXL text size. Only MapKit's own elements (attribution, compass) are exempt from the audit.
+- **End-to-end** — launched with `-uitest`, the app uses `FixtureProvider` (four restrooms around Apple Park), `FixtureResolver` ("Union Square" for any query) and a simulated location authorisation, so nothing touches the network or CoreLocation. Flags: `-uitest-empty`, `-uitest-fail`, `-uitest-noplace`, `-uitest-denied`. Fourteen tests drive the sorted list, row and pin taps, search (including the sheet expanding on focus), zoom buttons, every error state, and run `performAccessibilityAudit` on home, detail, error, denied, and at the AccessibilityXXXL text size. Only MapKit's own elements (attribution, compass, and road labels cut by the sheet edge) are exempt from the audit.
 
 ## Accessibility
 

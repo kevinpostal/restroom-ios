@@ -10,23 +10,23 @@ struct FinderView: View {
     @State private var usedFirstFix = false
     /// Last camera region reported by the map; zoom buttons scale it. nil until the map has laid out.
     @State private var region: MKCoordinateRegion?
+    @State private var detent: SheetDetent = .medium
 
     /// Zoom limits as latitude span (degrees): ~110 m to ~170 km.
     private static let minSpan = 0.001, maxSpan = 1.5
 
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: 0) {
-                header
-                Hairline()
-                mapPane.frame(height: geo.size.height * 0.44)
-                Hairline()
-                if let r = model.selected {
-                    DetailView(restroom: r, close: { model.selected = nil })
-                        .id(r.id) // fresh ScrollView offset when switching pins
-                } else {
-                    ResultList()
-                }
+            ZStack(alignment: .topTrailing) {
+                map
+                    // Camera framing + Apple attribution stay in the band above the sheet
+                    // (WWDC23 "Meet MapKit for SwiftUI": safeAreaInset keeps map content clear of your UI).
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear.frame(height: min(detent, .medium).height(in: geo.size.height) + geo.safeAreaInsets.bottom)
+                    }
+                    .ignoresSafeArea()
+                zoomControls.fixedSize().padding(Theme.unit)
+                BottomSheet(detent: $detent) { sheetHeader } content: { sheetBody }
             }
         }
         .background(Theme.paper.ignoresSafeArea())
@@ -45,12 +45,15 @@ struct FinderView: View {
         .onChange(of: model.center?.latitude) { _, _ in recenter() }
         .onChange(of: model.center?.longitude) { _, _ in recenter() }
         .onChange(of: model.selected?.id) { _, _ in
+            detent = .medium
             if let r = model.selected { move(to: r.coordinate, span: 600) } else { recenter() }
         }
     }
 
+    /// After a search the map moves; bring the sheet back to half so the new area is visible.
     private func recenter() {
         guard let c = model.center else { return }
+        detent = .medium
         move(to: c, span: 1500)
     }
 
@@ -83,73 +86,78 @@ struct FinderView: View {
             .formatted(.measurement(width: .abbreviated, usage: .road)) + " across"
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.unit) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Restroom").themed(.label)
-                    Text(model.centerLabel).themed(.display).lineLimit(2)
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("header.title")
-                }
+    /// Sheet drag area: place-card header when a pin is selected, otherwise search → title row (Apple Maps order).
+    @ViewBuilder private var sheetHeader: some View {
+        if let r = model.selected {
+            DetailHeader(restroom: r, close: { model.selected = nil })
+        } else {
+            SearchField(onFocus: { detent = .large })
+                .padding(.horizontal, 2 * Theme.unit)
+            HStack(alignment: .center) {
+                Text(model.centerLabel).themed(.title).lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("header.title")
                 Spacer()
-                Button {
-                    usedFirstFix = false
-                    if UITestMode.isActive {
-                        if !UITestMode.flag("-uitest-denied") { model.useCurrentLocation(UITestMode.start) }
-                    } else {
-                        location.request()
-                        if let loc = location.location { model.useCurrentLocation(loc) }
-                    }
-                } label: {
-                    Circle().fill(Theme.red).frame(width: 32, height: 32)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Use my location")
-                .accessibilityHint("Searches near your current location")
-                .accessibilityIdentifier("header.locate")
+                locateButton
             }
-            SearchField()
+            .padding(.horizontal, 2 * Theme.unit).padding(.vertical, Theme.unit)
         }
-        .padding(2 * Theme.unit)
     }
 
-    /// Without a centre (location denied, nothing searched) a world map is noise; show paper instead.
-    @ViewBuilder private var mapPane: some View {
-        if model.center == nil {
-            Text("Search a place to see restrooms on the map.")
-                .font(Theme.font(.mono)).foregroundStyle(Theme.graphite)
-                .multilineTextAlignment(.center)
-                .padding(2 * Theme.unit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .accessibilityIdentifier("map.placeholder")
+    @ViewBuilder private var sheetBody: some View {
+        if let r = model.selected {
+            DetailView(restroom: r)
+                .id(r.id) // fresh ScrollView offset when switching pins
         } else {
-            Map(position: $camera) {
-                UserAnnotation()
-                ForEach(model.restrooms) { r in
-                    Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
-                        Button { model.selected = r } label: {
-                            Pin(selected: model.selected?.id == r.id)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(r.name.isEmpty ? "Restroom" : r.name)
-                        .accessibilityHint("Shows details")
-                        .accessibilityAddTraits(model.selected?.id == r.id ? .isSelected : [])
-                        .accessibilityIdentifier("pin.\(r.id)")
-                    }
-                    .annotationTitles(.hidden)
-                }
-            }
-            .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-            .mapControlVisibility(.hidden)
-            .onMapCameraChange(frequency: .continuous) { region = $0.region }
-            .accessibilityLabel("Map of nearby restrooms")
-            .accessibilityValue(spanText)
-            .accessibilityIdentifier("map")
-            .overlay(alignment: .topTrailing) { zoomControls.padding(Theme.unit) }
+            Hairline()
+            ResultList()
         }
+    }
+
+    private var locateButton: some View {
+        Button {
+            usedFirstFix = false
+            if UITestMode.isActive {
+                if !UITestMode.flag("-uitest-denied") { model.useCurrentLocation(UITestMode.start) }
+            } else {
+                location.request()
+                if let loc = location.location { model.useCurrentLocation(loc) }
+            }
+        } label: {
+            Circle().fill(Theme.red).frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Use my location")
+        .accessibilityHint("Searches near your current location")
+        .accessibilityIdentifier("map.locate")
+    }
+
+    /// Map is always visible (convention); the no-centre message lives in the sheet's ResultList.
+    private var map: some View {
+        Map(position: $camera) {
+            UserAnnotation()
+            ForEach(model.restrooms) { r in
+                Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
+                    Button { model.selected = r } label: {
+                        Pin(selected: model.selected?.id == r.id)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(r.name.isEmpty ? "Restroom" : r.name)
+                    .accessibilityHint("Shows details")
+                    .accessibilityAddTraits(model.selected?.id == r.id ? .isSelected : [])
+                    .accessibilityIdentifier("pin.\(r.id)")
+                }
+                .annotationTitles(.hidden)
+            }
+        }
+        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+        .mapControlVisibility(.hidden)
+        .onMapCameraChange(frequency: .continuous) { region = $0.region }
+        .accessibilityLabel("Map of nearby restrooms")
+        .accessibilityValue(spanText)
+        .accessibilityIdentifier("map")
     }
 
     /// Two stacked paper tiles, hairline ink border, + / − glyphs. Each at least 44 pt.
@@ -202,6 +210,8 @@ private struct Pin: View {
 
 private struct SearchField: View {
     @EnvironmentObject private var model: FinderModel
+    let onFocus: () -> Void
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: Theme.unit) {
@@ -210,6 +220,7 @@ private struct SearchField: View {
                     .themed(.body)
                     .submitLabel(.search)
                     .autocorrectionDisabled()
+                    .focused($focused)
                     .onSubmit { Task { await model.search(model.query) } }
                     .frame(minHeight: 44)
                     .accessibilityLabel("Search a place")
@@ -225,6 +236,7 @@ private struct SearchField: View {
             }
             Hairline()
         }
+        .onChange(of: focused) { _, new in if new { onFocus() } }
     }
 }
 

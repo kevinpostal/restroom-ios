@@ -1,28 +1,47 @@
 import MapKit
 import SwiftUI
 
-struct DetailView: View {
+/// Place-card header (sheet drag area): eyebrow, name, × close. Focused for VoiceOver on appear.
+struct DetailHeader: View {
     let restroom: Restroom
     let close: () -> Void
     @AccessibilityFocusState private var nameFocused: Bool
 
     var body: some View {
+        HStack(alignment: .top, spacing: Theme.unit) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Restroom").themed(.label)
+                Text(restroom.name.isEmpty ? "Restroom" : restroom.name).themed(.display)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true) // outside a ScrollView; keeps the text-clipped audit green
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("detail.name")
+                    .accessibilityFocused($nameFocused)
+            }
+            Spacer(minLength: 0)
+            Button(action: close) {
+                Text("×").font(Theme.font(.display)).foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
+            .accessibilityHint("Shows the nearby restrooms again")
+            .accessibilityIdentifier("detail.close")
+        }
+        .padding(.horizontal, 2 * Theme.unit)
+        .padding(.bottom, Theme.unit)
+        .onAppear { nameFocused = true }
+    }
+}
+
+/// Scrolling place details with the Directions bar pinned to the bottom edge.
+struct DetailView: View {
+    let restroom: Restroom
+
+    var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2 * Theme.unit) {
-                    Button(action: close) {
-                        Text("← Nearby").font(Theme.font(.title)).foregroundStyle(Theme.red)
-                            .frame(minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back to list")
-                    .accessibilityHint("Shows the nearby restrooms again")
-                    .accessibilityIdentifier("detail.close")
-                    Text("Restroom").themed(.label)
-                    Text(restroom.name.isEmpty ? "Restroom" : restroom.name).themed(.display)
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("detail.name")
-                        .accessibilityFocused($nameFocused)
                     if !restroom.addressLine.isEmpty { Text(restroom.addressLine).themed(.body) }
                     if let d = restroom.distanceText {
                         Text(d).themed(.mono).accessibilityLabel(restroom.distanceSpoken ?? d)
@@ -77,7 +96,6 @@ struct DetailView: View {
             .accessibilityIdentifier("detail.directions")
         }
         .background(Theme.paper)
-        .onAppear { nameFocused = true }
     }
 
     private func openDirections() {

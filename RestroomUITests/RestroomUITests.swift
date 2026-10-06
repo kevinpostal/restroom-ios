@@ -31,18 +31,24 @@ final class RestroomUITests: XCTestCase {
     }
 
     /// Every audit type; each non-ignored issue is reported with its element and detail.
-    /// Only MapKit's own internals (attribution, compass, user dot) are ignored; app pins/rows on the map are not.
+    /// The map is full-screen, so only identifier-less elements outside the sheet (MapKit attribution,
+    /// compass, user dot) are ignored; pins, map controls and everything in the sheet are audited.
+    /// "Potentially inaccessible text" with no element is MapKit's own road label cut by the sheet edge
+    /// (it flips with the sheet height); every app text is a SwiftUI `Text`, which always has an element.
     private func audit(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let map = app.otherElements["map"].firstMatch
+        let sheet = app.otherElements["sheet"].firstMatch
         let mapFrame = map.exists ? map.frame : .zero
+        let sheetFrame = sheet.exists ? sheet.frame : .zero
         let resume = continueAfterFailure
         continueAfterFailure = true
         defer { continueAfterFailure = resume }
         try? app.performAccessibilityAudit(for: .all) { issue in
             let el = issue.element
-            let ownedByApp = el.map { $0.identifier.hasPrefix("pin.") || $0.identifier.hasPrefix("row.") } ?? true
+            let ownedByApp = el.map { !$0.identifier.isEmpty || sheetFrame.contains($0.frame) } ?? true
             let insideMap = el.map { $0.identifier == "map" || mapFrame.contains($0.frame) } ?? false
-            let ignore = insideMap && !ownedByApp
+            let mapLabel = el == nil && issue.compactDescription == "Potentially inaccessible text"
+            let ignore = (insideMap && !ownedByApp) || mapLabel
             if !ignore {
                 let location = el.map { "\($0.elementType) id=\"\($0.identifier)\" label=\"\($0.label)\" \($0.frame)" } ?? "(no element)"
                 XCTFail("Accessibility audit: \(issue.compactDescription) — \(location): \(issue.detailedDescription)", file: file, line: line)
@@ -67,6 +73,7 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(label.contains("0.4 mi"), label)
         XCTAssertTrue(label.contains("Accessible"), label)
         app.collectionViews["list"].swipeUp()
+        if !row(app, 4).exists { app.collectionViews["list"].swipeUp() } // first swipe may only expand the sheet
         XCTAssertTrue(row(app, 4).waitForExistence(timeout: wait), "farthest row reachable by scrolling")
         XCTAssertTrue(row(app, 4).label.contains("1.3 mi"), row(app, 4).label)
     }
@@ -81,12 +88,25 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(app.buttons["detail.directions"].isHittable)
         XCTAssertTrue(app.staticTexts["Unisex"].exists)
         XCTAssertTrue(app.buttons["pin.2"].isSelected)
-        XCTAssertTrue(app.otherElements["map"].firstMatch.isHittable, "map stays visible with detail open")
+        let sheet = app.otherElements["sheet"].firstMatch
+        XCTAssertTrue(sheet.exists)
+        XCTAssertLessThan(app.buttons["pin.2"].frame.midY, sheet.frame.minY, "selected pin sits in the map band above the sheet")
         XCTAssertTrue(app.buttons["pin.2"].isHittable)
         app.buttons["detail.close"].tap()
         XCTAssertTrue(row(app, 2).waitForExistence(timeout: wait))
         XCTAssertFalse(app.staticTexts["detail.name"].exists)
         XCTAssertFalse(app.buttons["pin.2"].isSelected)
+    }
+
+    func testSearchFocusExpandsSheet() {
+        let app = launch()
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        let sheet = app.otherElements["sheet"].firstMatch
+        XCTAssertTrue(sheet.exists)
+        let before = sheet.frame.minY
+        app.textFields["search.field"].tap()
+        let expanded = expectation(for: NSPredicate { _, _ in sheet.frame.minY < before - 100 }, evaluatedWith: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [expanded], timeout: wait), .completed, "sheet expands when search is focused (minY \(sheet.frame.minY) vs \(before))")
     }
 
     func testSearchRelabelsHeaderAndReloads() {
