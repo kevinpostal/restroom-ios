@@ -17,6 +17,9 @@ final class RestroomUITests: XCTestCase {
     }
 
     private func row(_ app: XCUIApplication, _ id: Int) -> XCUIElement { app.buttons["row.\(id)"] }
+    private func anyRow(_ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'row.'")).firstMatch
+    }
 
     private func search(_ app: XCUIApplication, _ text: String) {
         let field = app.textFields["search.field"]
@@ -66,13 +69,14 @@ final class RestroomUITests: XCTestCase {
         let label = row(app, 1).label
         XCTAssertTrue(label.contains("Happy Lemon"), label)
         XCTAssertTrue(label.contains("0.2 mi"), label)
-        XCTAssertTrue(label.contains("Accessible"), label)
+        XCTAssertTrue(label.contains("ADA accessible"), label)
         // The pin merge publishes a beat after the list; wait for it rather than reading the first label.
         let coded = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", "Door code 2 5 8 0"), evaluatedWith: row(app, 1))], timeout: wait)
         XCTAssertEqual(coded, .completed, row(app, 1).label)
         // Coded rows are a line taller, so the half sheet realizes only two; expand it before checking order.
         // With the park as a fifth row a swipe may scroll rows 1–2 off the top, so only the order of whatever is
         // on screen is asserted.
+        app.otherElements["sheet.grabber"].firstMatch.swipeUp()   // expand the sheet first
         for _ in 0..<3 where !row(app, 3).exists { app.collectionViews["list"].swipeUp() }
         XCTAssertTrue(row(app, 3).waitForExistence(timeout: wait))
         let visible = (1...4).map { row(app, $0) }.filter(\.exists)
@@ -92,6 +96,22 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: wait))
         XCTAssertEqual(name.label, "Happy Lemon")
         XCTAssertTrue(app.buttons["pin.1"].isSelected)
+    }
+
+    func testAdaToggleFiltersRowsAndPins() {
+        let app = launch()
+        XCTAssertTrue(row(app, 3).waitForExistence(timeout: wait) || row(app, 1).waitForExistence(timeout: wait))
+        let ada = app.descendants(matching: .any)["header.ada"].firstMatch
+        XCTAssertEqual(ada.value as? String, "Off")
+        ada.tap()
+        XCTAssertEqual(ada.value as? String, "On")
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        XCTAssertFalse(row(app, 3).exists, "Library is not ADA accessible")
+        XCTAssertFalse(app.buttons["pin.3"].exists)
+        XCTAssertFalse(app.buttons["row.-5"].exists, "parks are never ADA-verified")
+        app.buttons["header.nearest"].tap()
+        XCTAssertTrue(app.staticTexts["detail.name"].waitForExistence(timeout: wait))
+        XCTAssertEqual(app.staticTexts["detail.name"].label, "Happy Lemon")
     }
 
     func testTapRowOpensDetailAndSelectsPin() {
@@ -123,7 +143,7 @@ final class RestroomUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["header.title"].label, "Near you")
         app.otherElements["map"].firstMatch.swipeLeft()
         waitLabel(app.staticTexts["header.title"], "This area")
-        XCTAssertTrue(row(app, 1).exists, "rows stay on screen while the new area loads")
+        XCTAssertTrue(anyRow(app).exists, "rows stay on screen while the new area loads")
     }
 
     func testPanWithCardOpenClosesItAndSearches() {
@@ -134,7 +154,7 @@ final class RestroomUITests: XCTestCase {
         app.otherElements["map"].firstMatch.swipeLeft()
         waitLabel(app.staticTexts["header.title"], "This area")
         XCTAssertFalse(app.staticTexts["detail.name"].exists)
-        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        XCTAssertTrue(anyRow(app).waitForExistence(timeout: wait))
     }
 
     func testParkRowTaggedAndCardExplains() {
@@ -292,6 +312,9 @@ final class RestroomUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest"] + largeText
         app.launch()
+        // The stacked, captioned header fills the half sheet at XXXL; pull the sheet up to reach the rows.
+        XCTAssertTrue(app.otherElements["sheet.grabber"].firstMatch.waitForExistence(timeout: wait))
+        if !row(app, 1).waitForExistence(timeout: 2) { app.otherElements["sheet.grabber"].firstMatch.swipeUp() }
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
         XCTAssertTrue(row(app, 1).label.contains("0.2 mi"), row(app, 1).label)
         audit(app)

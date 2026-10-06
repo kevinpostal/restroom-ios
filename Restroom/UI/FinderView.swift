@@ -126,13 +126,14 @@ struct FinderView: View {
         } else {
             SearchField(onFocus: { detent = .large })
                 .padding(.horizontal, 2 * Theme.unit)
-            // Three 44 pt buttons leave no room for the title at accessibility sizes: stack them underneath.
-            let title = Text(model.centerLabel).themed(.title).lineLimit(1)
+            // Four captioned buttons share a row with the title only at the default text size; anything larger
+            // stacks them underneath so captions wrap instead of truncating.
+            let title = Text(model.centerLabel).themed(.title)   // wraps rather than clips next to the fixed button strip
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("header.title")
-            let buttons = HStack(spacing: 0) { refreshButton; locateButton; nearestButton }
+            let buttons = HStack(alignment: .top, spacing: 0) { refreshButton; locateButton; nearestButton; adaButton }
             Group {
-                if typeSize.isAccessibilitySize {
+                if typeSize > .large {
                     VStack(alignment: .leading, spacing: 0) {
                         title.frame(maxWidth: .infinity, alignment: .leading)
                         buttons
@@ -165,9 +166,7 @@ struct FinderView: View {
                 if let loc = location.location { model.useCurrentLocation(loc) }
             }
         } label: {
-            Circle().fill(Theme.red).frame(width: 32, height: 32)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            captioned("Near me") { Circle().fill(Theme.red).frame(width: 32, height: 32) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Use my location")
@@ -188,7 +187,7 @@ struct FinderView: View {
                 location.request()
             }
         } label: {
-            Pin(selected: true)
+            captioned("Nearest") { Pin(selected: true) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Nearest restroom")
@@ -196,12 +195,42 @@ struct FinderView: View {
         .accessibilityIdentifier("header.nearest")
     }
 
+    /// "ADA" tile: paper with an ink border off, ink with paper text on. Filters list, pins and Nearest.
+    private var adaButton: some View {
+        Button { model.adaOnly.toggle() } label: {
+            captioned("Filter") {
+                Text("ADA").font(Theme.font(.label)).tracking(1.2)
+                    .foregroundStyle(model.adaOnly ? Theme.paper : Theme.ink)
+                    .padding(4)
+                    .frame(minWidth: 32, minHeight: 32)   // grows with Dynamic Type instead of clipping
+                    .background(model.adaOnly ? Theme.ink : Theme.paper)
+                    .overlay(Rectangle().strokeBorder(Theme.ink, lineWidth: 1))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("ADA accessible only")
+        .accessibilityValue(model.adaOnly ? "On" : "Off")
+        .accessibilityHint("Shows only wheelchair-accessible restrooms")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier("header.ada")
+    }
+
+    /// Glyph in a 44 pt hit area with a one-word caption beneath, so no control relies on its shape alone.
+    private func captioned<G: View>(_ caption: String, @ViewBuilder glyph: () -> G) -> some View {
+        VStack(spacing: 2) {
+            glyph().frame(minWidth: 44, minHeight: 44)
+            // Uppercased in the string, not via textCase: that modifier would shout the button's accessibility value too.
+            Text(caption.uppercased()).font(Theme.font(.label)).tracking(0.6).foregroundStyle(Theme.graphite)
+                .multilineTextAlignment(.center)
+        }
+        .frame(minWidth: 66)   // wide enough for "REFRESH" at the default size; larger sizes stack and wrap
+        .contentShape(Rectangle())
+    }
+
     /// Hairline ring: a full circle at rest, a turning three-quarter arc while a fetch is in flight.
     private var refreshButton: some View {
         Button { model.refresh() } label: {
-            LoadingRing(busy: model.busy)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            captioned("Refresh") { LoadingRing(busy: model.busy) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Refresh")
@@ -214,7 +243,7 @@ struct FinderView: View {
     private var map: some View {
         Map(position: $camera) {
             UserAnnotation()
-            ForEach(model.restrooms) { r in
+            ForEach(model.visible) { r in
                 Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
                     Button { model.selected = r } label: {
                         Pin(selected: model.selected?.id == r.id)
@@ -374,7 +403,10 @@ private struct ResultList: View {
                     note("Finding you…")
                 }
             case .loaded:
-                ForEach(model.restrooms) { r in
+                if model.adaOnly && model.visible.isEmpty {
+                    note("No ADA-accessible restrooms within range.")
+                }
+                ForEach(model.visible) { r in
                     Button { model.selected = r } label: { RestroomRow(restroom: r) }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("row.\(r.id)")
@@ -409,7 +441,6 @@ private struct ResultList: View {
 private struct RestroomRow: View {
     let restroom: Restroom
     @Environment(\.dynamicTypeSize) private var typeSize
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var withoutColor
 
     private var name: String { restroom.name.isEmpty ? "Restroom" : restroom.name }
 
@@ -458,15 +489,17 @@ private struct RestroomRow: View {
                 Text(a.title).themed(.mono)
             }
             if !restroom.amenities.isEmpty {
-                if withoutColor {
-                    Text(restroom.amenities.map(\.title).joined(separator: " · ")).themed(.label).padding(.top, 4)
-                } else {
-                    HStack(spacing: Theme.unit) {
-                        ForEach(restroom.amenities, id: \.self) { Badge(kind: $0, size: 12) }
+                // Badge + word, always: colour and shape are reinforcement, the word is the meaning.
+                HStack(spacing: 1.5 * Theme.unit) {
+                    ForEach(restroom.amenities, id: \.self) { a in
+                        HStack(spacing: 4) {
+                            Badge(kind: a, size: 10)
+                            Text(a.short).themed(.label)
+                        }
                     }
-                    .padding(.top, 4)
-                    .accessibilityHidden(true)
                 }
+                .padding(.top, 4)
+                .accessibilityHidden(true)
             }
         }
     }

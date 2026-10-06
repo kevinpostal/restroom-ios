@@ -92,6 +92,25 @@ final class FinderModelTests: XCTestCase {
         XCTAssertEqual(m.selected?.id, -5)
     }
 
+    func testAdaOnlyNarrowsVisibleAndNearestAndPersists() async {
+        let defaults = UserDefaults(suiteName: "FinderModelTests.ada")!
+        defaults.removePersistentDomain(forName: "FinderModelTests.ada")
+        let near = Restroom(id: 1, name: "Near", latitude: 37.3305, longitude: -122.0)
+        let ada = Restroom(id: 2, name: "ADA", accessible: true, latitude: 37.331, longitude: -122.0)
+        let park = Restroom(id: -5, name: "Park", latitude: 37.3302, longitude: -122.0, kind: .park)
+        let m = FinderModel(api: FakeProvider(result: .success([near, ada])), pins: noPins,
+                            parks: FakeParks(result: .success([park])), store: nil, defaults: defaults)
+        XCTAssertFalse(m.adaOnly)
+        m.adaOnly = true
+        m.findNearest(from: here)
+        await m.settle()
+        XCTAssertEqual(m.restrooms.map(\.id), [-5, 1, 2])
+        XCTAssertEqual(m.visible.map(\.id), [2], "only wheelchair-accessible restrooms; parks drop out")
+        XCTAssertEqual(m.selected?.id, 2)
+        XCTAssertTrue(FinderModel(api: FakeProvider(result: .success([])), pins: noPins, parks: noParks, store: nil, defaults: defaults).adaOnly,
+                      "toggle survives a relaunch")
+    }
+
     func testReloadWithoutCenterStaysIdle() async {
         let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, parks: noParks, store: nil)
         await m.reloadAndWait()

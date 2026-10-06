@@ -71,11 +71,21 @@ struct LoadingRing: View {
 enum Amenity: CaseIterable, Equatable {
     case accessible, unisex, changingTable
 
+    /// Full name: detail card and VoiceOver. "Accessible" on Refuge means ADA/wheelchair accessible.
     var title: String {
         switch self {
-        case .accessible: return "Accessible"
+        case .accessible: return "ADA accessible"
         case .unisex: return "Unisex"
         case .changingTable: return "Changing table"
+        }
+    }
+
+    /// One word for the row, next to the badge, so the colour never carries meaning alone.
+    var short: String {
+        switch self {
+        case .accessible: return "ADA"
+        case .unisex: return "Unisex"
+        case .changingTable: return "Changing"
         }
     }
 }

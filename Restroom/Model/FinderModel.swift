@@ -16,6 +16,16 @@ final class FinderModel: ObservableObject {
     @Published var query: String = ""
     /// True while a network fetch for the current centre is in flight (cache hits never set it).
     @Published private(set) var busy = false
+    /// "ADA only" toggle: list, pins and the Nearest button see only wheelchair-accessible restrooms.
+    /// Parks are never ADA-verified, so they drop out too. Remembered across launches.
+    @Published var adaOnly: Bool {
+        didSet { defaults?.set(adaOnly, forKey: Self.adaOnlyKey) }
+    }
+    static let adaOnlyKey = "adaOnly"
+    private let defaults: UserDefaults?
+
+    /// What the list and map show: `restrooms`, narrowed by the ADA toggle.
+    var visible: [Restroom] { adaOnly ? restrooms.filter(\.accessible) : restrooms }
 
     private let api: RestroomProvider
     private let pins: PinProvider
@@ -36,7 +46,10 @@ final class FinderModel: ObservableObject {
     static let serveTTL: TimeInterval = 24 * 60 * 60
 
     init(api: RestroomProvider = RefugeAPI.shared, pins: PinProvider = PottyPinsAPI.shared,
-         places: PlaceResolver = LocalSearchResolver(), parks: PlaceProvider = ParkPlaces(), store: TileStore? = .disk) {
+         places: PlaceResolver = LocalSearchResolver(), parks: PlaceProvider = ParkPlaces(), store: TileStore? = .disk,
+         defaults: UserDefaults? = .standard) {
+        self.defaults = defaults
+        adaOnly = defaults?.bool(forKey: Self.adaOnlyKey) ?? false
         self.api = api
         self.pins = pins
         self.places = places
@@ -147,7 +160,8 @@ final class FinderModel: ObservableObject {
         let result = Self.rank(pool, from: center)
         restrooms = result
         state = result.isEmpty ? .empty : .loaded
-        if openNearestOnPublish, let nearest = result.first(where: { $0.kind == .restroom }) ?? result.first {
+        let candidates = adaOnly ? result.filter(\.accessible) : result
+        if openNearestOnPublish, let nearest = candidates.first(where: { $0.kind == .restroom }) ?? candidates.first {
             openNearestOnPublish = false
             selected = nearest
         }
