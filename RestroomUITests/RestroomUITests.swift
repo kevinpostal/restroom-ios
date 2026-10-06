@@ -115,6 +115,17 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(row(app, 1).exists, "rows stay on screen while the new area loads")
     }
 
+    func testPanWithCardOpenClosesItAndSearches() {
+        let app = launch()
+        XCTAssertTrue(row(app, 2).waitForExistence(timeout: wait))
+        row(app, 2).tap()
+        XCTAssertTrue(app.staticTexts["detail.name"].waitForExistence(timeout: wait))
+        app.otherElements["map"].firstMatch.swipeLeft()
+        waitLabel(app.staticTexts["header.title"], "This area")
+        XCTAssertFalse(app.staticTexts["detail.name"].exists)
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+    }
+
     func testSearchFocusExpandsSheet() {
         let app = launch()
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))

@@ -60,13 +60,16 @@ struct FinderView: View {
         move(to: c, span: 1500)
     }
 
-    /// A user pan past a quarter of the visible span (never under 200 m) searches the new area.
-    /// Programmatic moves land on `model.center` or the selected pin, so they never pass the threshold.
+    /// A user pan past an eighth of the visible span (never under 200 m) searches the new area, closing any
+    /// open place card. Programmatic moves land on `model.center` or the selected pin, so they never pass
+    /// the threshold: the pin's own 600 m framing is well under 200 m of drift.
     private func exploreIfPanned(_ r: MKCoordinateRegion) {
-        guard model.selected == nil, let c = model.center else { return }
-        guard meters(c, r.center) > max(200, r.span.latitudeDelta * 111_000 / 4) else { return }
+        let anchor = model.selected?.coordinate ?? model.center
+        guard let anchor else { return }
+        guard meters(anchor, r.center) > max(200, r.span.latitudeDelta * 111_000 / 8) else { return }
         explored = r.center
         model.explore(r.center)
+        model.selected = nil
     }
 
     private func meters(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {

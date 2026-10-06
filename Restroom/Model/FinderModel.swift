@@ -77,9 +77,13 @@ final class FinderModel: ObservableObject {
         }
         // Refuge serialises requests per client; stop background fetches so this one isn't queued behind them.
         prefetching?.cancel()
+        let now = Date()
+        let nearbyCached = keepingResults && cell.ring.contains { cache[$0].map { now.timeIntervalSince($0.at) < Self.cacheTTL } ?? false }
         if !(keepingResults && state == .loaded) { state = .loading }
         inflight = Task { [api] in
             do {
+                // Neighbouring pages give approximately-right rows at once; the fetch below replaces them.
+                if nearbyCached { await publish(around: center) }
                 let page = try await api.nearby(center, perPage: Self.pageSize)
                 guard !Task.isCancelled else { return }
                 store(page, in: cell)
