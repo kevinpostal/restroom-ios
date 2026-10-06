@@ -314,7 +314,7 @@ private struct RestroomRow: View {
 
     private var voiceOverLabel: String {
         let amenities = restroom.amenities.isEmpty ? "no amenity details" : restroom.amenities.map(\.title).joined(separator: ", ")
-        return [name, restroom.addressLine, restroom.distanceSpoken ?? "", amenities]
+        return [name, restroom.addressLine, restroom.access?.spoken ?? "", restroom.distanceSpoken ?? "", amenities]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
     }
@@ -347,6 +347,9 @@ private struct RestroomRow: View {
             Text(name).themed(.title)
             if !restroom.addressLine.isEmpty {
                 Text(restroom.addressLine).font(Theme.font(.body)).foregroundStyle(Theme.graphite)
+            }
+            if let a = restroom.access {
+                Text(a.title).themed(.mono)
             }
             if !restroom.amenities.isEmpty {
                 if withoutColor {

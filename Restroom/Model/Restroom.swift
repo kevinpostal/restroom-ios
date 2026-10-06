@@ -19,6 +19,8 @@ struct Restroom: Identifiable, Decodable, Equatable {
     let downvote: Int
     let approved: Bool
     let distanceMiles: Double?
+    /// PottyPins door pin attached by `FinderModel.attach`; never decoded.
+    var pin: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name, street, city, state, country, accessible, unisex, directions, comment
@@ -50,13 +52,17 @@ struct Restroom: Identifiable, Decodable, Equatable {
 
     init(id: Int, name: String, street: String = "", city: String = "", state: String = "",
          accessible: Bool = false, unisex: Bool = false, changingTable: Bool = false,
+         directions: String = "", comment: String = "",
          latitude: Double = 0, longitude: Double = 0, distanceMiles: Double? = nil) {
         self.id = id; self.name = name; self.street = street; self.city = city; self.state = state
         self.country = ""; self.accessible = accessible; self.unisex = unisex
-        self.changingTable = changingTable; self.directions = ""; self.comment = ""
+        self.changingTable = changingTable; self.directions = directions; self.comment = comment
         self.latitude = latitude; self.longitude = longitude; self.upvote = 0; self.downvote = 0
         self.approved = true; self.distanceMiles = distanceMiles
     }
+
+    /// A PottyPins pin wins over anything mined from Refuge text.
+    var access: Access? { pin.flatMap(Access.fromPin) ?? Access.parse(directions + " " + comment) }
 
     var coordinate: CLLocationCoordinate2D { .init(latitude: latitude, longitude: longitude) }
 

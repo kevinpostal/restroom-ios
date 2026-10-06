@@ -46,6 +46,15 @@ struct DetailView: View {
                     if let d = restroom.distanceText {
                         Text(d).themed(.mono).accessibilityLabel(restroom.distanceSpoken ?? d)
                     }
+                    if let a = restroom.access {
+                        Hairline()
+                        Text("Code").themed(.label).accessibilityAddTraits(.isHeader)
+                        Group {
+                            if case .code(let c) = a { Text(c).themed(.display) } else { Text(a.title).themed(.body) }
+                        }
+                        .accessibilityLabel(a.spoken)
+                        .accessibilityIdentifier("detail.code")
+                    }
 
                     Hairline()
                     if restroom.amenities.isEmpty {

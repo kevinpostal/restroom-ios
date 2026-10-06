@@ -4,6 +4,7 @@ import SwiftUI
 struct RestroomApp: App {
     @StateObject private var model = FinderModel(
         api: UITestMode.isActive ? FixtureProvider() : RefugeAPI.shared,
+        pins: UITestMode.isActive ? FixturePins() : PottyPinsAPI.shared,
         places: UITestMode.isActive ? FixtureResolver() : LocalSearchResolver()
     )
     @StateObject private var location = LocationService(

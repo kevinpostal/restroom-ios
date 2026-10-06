@@ -62,18 +62,23 @@ final class RestroomUITests: XCTestCase {
     func testNearbyListSortedWithDistances() {
         let app = launch()
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
-        let ys = (1...3).map { row(app, $0) }.map { r -> CGFloat in
-            XCTAssertTrue(r.exists, r.identifier)
-            return r.frame.minY
-        }
-        XCTAssertEqual(ys, ys.sorted(), "rows must be in distance order")
         XCTAssertEqual(app.staticTexts["header.title"].label, "Near you")
         let label = row(app, 1).label
         XCTAssertTrue(label.contains("Happy Lemon"), label)
         XCTAssertTrue(label.contains("0.4 mi"), label)
         XCTAssertTrue(label.contains("Accessible"), label)
+        // The pin merge publishes a beat after the list; wait for it rather than reading the first label.
+        let coded = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", "Door code 2 5 8 0"), evaluatedWith: row(app, 1))], timeout: wait)
+        XCTAssertEqual(coded, .completed, row(app, 1).label)
+        // Coded rows are a line taller, so the half sheet realizes only two; expand it before checking order.
         app.collectionViews["list"].swipeUp()
-        if !row(app, 4).exists { app.collectionViews["list"].swipeUp() } // first swipe may only expand the sheet
+        if !row(app, 3).exists { app.collectionViews["list"].swipeUp() } // first swipe may only expand the sheet
+        XCTAssertTrue(row(app, 3).waitForExistence(timeout: wait))
+        let visible = (1...4).map { row(app, $0) }.filter(\.exists)
+        XCTAssertGreaterThanOrEqual(visible.count, 3, visible.map(\.identifier).joined(separator: ","))
+        let ys = visible.map { $0.frame.minY }
+        XCTAssertEqual(ys, ys.sorted(), "rows must be in distance order")
+        if !row(app, 4).exists { app.collectionViews["list"].swipeUp() }
         XCTAssertTrue(row(app, 4).waitForExistence(timeout: wait), "farthest row reachable by scrolling")
         XCTAssertTrue(row(app, 4).label.contains("1.3 mi"), row(app, 4).label)
     }
@@ -85,6 +90,9 @@ final class RestroomUITests: XCTestCase {
         let name = app.staticTexts["detail.name"]
         XCTAssertTrue(name.waitForExistence(timeout: wait))
         XCTAssertEqual(name.label, "Kaiser Hospital")
+        let code = app.staticTexts["detail.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: wait))
+        XCTAssertEqual(code.label, "Ask staff for code")
         XCTAssertTrue(app.buttons["detail.directions"].isHittable)
         XCTAssertTrue(app.staticTexts["Unisex"].exists)
         XCTAssertTrue(app.buttons["pin.2"].isSelected)

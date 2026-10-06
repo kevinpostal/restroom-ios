@@ -19,12 +19,20 @@ struct FixtureProvider: RestroomProvider {
             Restroom(id: 1, name: "Happy Lemon", street: "10963 N Wolfe Road", city: "Cupertino", state: "CA",
                      accessible: true, latitude: 37.3372, longitude: -122.0075, distanceMiles: 0.4),
             Restroom(id: 2, name: "Kaiser Hospital", street: "10992 N De Anza Blvd", city: "Cupertino", state: "CA",
-                     accessible: true, unisex: true, latitude: 37.3320, longitude: -122.0040, distanceMiles: 0.6),
+                     accessible: true, unisex: true, comment: "Customers only. Ask at the counter for the code.",
+                     latitude: 37.3320, longitude: -122.0040, distanceMiles: 0.6),
             Restroom(id: 3, name: "Library", street: "10800 Torre Ave", city: "Cupertino", state: "CA",
                      unisex: true, changingTable: true, latitude: 37.3380, longitude: -122.0050, distanceMiles: 0.9),
             Restroom(id: 4, name: "Park Kiosk", city: "Cupertino", state: "CA",
                      latitude: 37.3310, longitude: -122.0140, distanceMiles: 1.3),
         ]
+    }
+}
+
+/// Exactly Happy Lemon's coordinate (0 m match); nothing near the other fixtures.
+struct FixturePins: PinProvider {
+    func pins() async throws -> [DoorPin] {
+        [DoorPin(name: "Happy Lemon", latitude: 37.3372, longitude: -122.0075, pin: "2580")]
     }
 }
 
