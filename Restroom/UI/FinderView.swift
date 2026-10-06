@@ -27,7 +27,13 @@ struct FinderView: View {
                         Color.clear.frame(height: min(detent, .medium).height(in: geo.size.height) + geo.safeAreaInsets.bottom)
                     }
                     .ignoresSafeArea()
-                zoomControls.fixedSize().padding(Theme.unit)
+                HStack(alignment: .top) {
+                    searchingTile
+                    Spacer()
+                    zoomControls.fixedSize()
+                }
+                .padding(Theme.unit)
+                .animation(.linear(duration: 0.2), value: model.busy)
                 BottomSheet(detent: $detent) { sheetHeader } content: { sheetBody }
             }
         }
@@ -177,8 +183,6 @@ struct FinderView: View {
                 Annotation(r.name, coordinate: r.coordinate, anchor: .center) {
                     Button { model.selected = r } label: {
                         Pin(selected: model.selected?.id == r.id)
-                            .opacity(model.busy ? 0.35 : 1)   // these pins are the old area until the fetch lands
-                            .animation(.linear(duration: 0.2), value: model.busy)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(r.name.isEmpty ? "Restroom" : r.name)
@@ -191,6 +195,11 @@ struct FinderView: View {
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControlVisibility(.hidden)
+        .overlay {   // paper wash while a fetch is in flight: the pins underneath are the old area
+            Theme.paper.opacity(model.busy ? 0.35 : 0)
+                .allowsHitTesting(false)
+                .animation(.linear(duration: 0.2), value: model.busy)
+        }
         .onMapCameraChange(frequency: .continuous) { region = $0.region }
         .onMapCameraChange(frequency: .onEnd) { exploreIfPanned($0.region) }
         .accessibilityLabel("Map of nearby restrooms")
@@ -208,6 +217,25 @@ struct FinderView: View {
         .background(Theme.paper)
         .overlay(Rectangle().strokeBorder(Theme.ink, lineWidth: 1))
         .accessibilityElement(children: .contain)
+    }
+
+    /// Paper tile at the map's top-left while a fetch is in flight: small turning ring + "Searching…".
+    /// The map itself gets a light paper wash so the stale pins read as provisional.
+    @ViewBuilder private var searchingTile: some View {
+        if model.busy {
+            HStack(spacing: Theme.unit) {
+                LoadingRing(busy: true).scaleEffect(0.5).frame(width: 16, height: 16)
+                Text("Searching…").themed(.mono)
+            }
+            .padding(.horizontal, 1.5 * Theme.unit)
+            .frame(minHeight: 44)
+            .background(Theme.paper)
+            .overlay(Rectangle().strokeBorder(Theme.ink, lineWidth: 1))
+            .transition(.opacity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Searching this area")
+            .accessibilityIdentifier("map.loading")
+        }
     }
 
     private func zoomButton(_ glyph: String, label: String, id: String, action: @escaping () -> Void) -> some View {

@@ -131,10 +131,13 @@ final class RestroomUITests: XCTestCase {
         let refresh = app.buttons["header.refresh"]
         XCTAssertTrue(refresh.waitForExistence(timeout: wait))
         XCTAssertEqual(refresh.value as? String, "Loading")
+        XCTAssertTrue(app.otherElements["map.loading"].exists, "Searching tile on the map during the first load")
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
         XCTAssertEqual(refresh.value as? String, "")
+        XCTAssertFalse(app.otherElements["map.loading"].exists)
         refresh.tap()
         XCTAssertEqual(refresh.value as? String, "Loading")
+        XCTAssertTrue(app.otherElements["map.loading"].exists, "Searching tile on the map during refresh")
         XCTAssertTrue(row(app, 1).exists, "rows stay on screen while refreshing")
         let idle = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "value == ''"), evaluatedWith: refresh)], timeout: wait)
         XCTAssertEqual(idle, .completed)
