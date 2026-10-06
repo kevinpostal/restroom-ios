@@ -30,6 +30,15 @@ struct FixtureProvider: RestroomProvider {
     }
 }
 
+/// One park ~400 m from the start; Refuge fixtures stay the first three rows.
+struct FixtureParks: PlaceProvider {
+    func places(near center: CLLocationCoordinate2D, radius: CLLocationDistance) async throws -> [Restroom] {
+        if UITestMode.flag("-uitest-empty") { return [] }
+        return [Restroom(id: -5, name: "Memorial Park", street: "21121 Stevens Creek Blvd", city: "Cupertino", state: "CA",
+                  latitude: 37.3300, longitude: -122.0150, kind: .park)]
+    }
+}
+
 /// Exactly Happy Lemon's coordinate (0 m match); nothing near the other fixtures.
 struct FixturePins: PinProvider {
     func pins() async throws -> [DoorPin] {

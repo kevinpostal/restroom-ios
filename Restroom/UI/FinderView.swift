@@ -27,13 +27,12 @@ struct FinderView: View {
                         Color.clear.frame(height: min(detent, .medium).height(in: geo.size.height) + geo.safeAreaInsets.bottom)
                     }
                     .ignoresSafeArea()
-                HStack(alignment: .top) {
-                    searchingTile
-                    Spacer()
-                    zoomControls.fixedSize()
-                }
-                .padding(Theme.unit)
-                .animation(.linear(duration: 0.2), value: model.busy)
+                zoomControls.fixedSize().padding(Theme.unit)
+                searchingTile
+                    .padding(Theme.unit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
+                    .animation(.linear(duration: 0.2), value: model.busy)
                 BottomSheet(detent: $detent) { sheetHeader } content: { sheetBody }
             }
         }
@@ -379,7 +378,9 @@ private struct RestroomRow: View {
     private var name: String { restroom.name.isEmpty ? "Restroom" : restroom.name }
 
     private var voiceOverLabel: String {
-        let amenities = restroom.amenities.isEmpty ? "no amenity details" : restroom.amenities.map(\.title).joined(separator: ", ")
+        let amenities = restroom.kind == .restroom
+            ? (restroom.amenities.isEmpty ? "no amenity details" : restroom.amenities.map(\.title).joined(separator: ", "))
+            : "\(restroom.kind.tag ?? ""), usually has restrooms"
         return [name, restroom.addressLine, restroom.access?.spoken ?? "", restroom.distanceSpoken ?? "", amenities]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
@@ -413,6 +414,9 @@ private struct RestroomRow: View {
             Text(name).themed(.title)
             if !restroom.addressLine.isEmpty {
                 Text(restroom.addressLine).font(Theme.font(.body)).foregroundStyle(Theme.graphite)
+            }
+            if let tag = restroom.kind.tag {
+                Text(tag).themed(.label)
             }
             if let a = restroom.access {
                 Text(a.title).themed(.mono)

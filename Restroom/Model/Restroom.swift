@@ -23,10 +23,25 @@ struct Restroom: Identifiable, Codable, Equatable {
     var distanceMiles: Double?
     /// PottyPins door pin attached by `FinderModel.attach`; never decoded.
     var pin: String? = nil
+    /// Refuge entries are verified restrooms; parks and campgrounds come from Apple's POI data and usually have one.
+    let kind: Kind
+
+    enum Kind: String, Codable {
+        case restroom, park, campground
+
+        /// Row/card tag for non-restroom places; nil for a verified restroom.
+        var tag: String? {
+            switch self {
+            case .restroom: nil
+            case .park: "Park"
+            case .campground: "Campground"
+            }
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, street, city, state, country, accessible, unisex, directions, comment
-        case latitude, longitude, upvote, downvote, approved
+        case latitude, longitude, upvote, downvote, approved, kind
         case changingTable = "changing_table"
         case distanceMiles = "distance"
     }
@@ -50,17 +65,18 @@ struct Restroom: Identifiable, Codable, Equatable {
         downvote = try c.decodeIfPresent(Int.self, forKey: .downvote) ?? 0
         approved = try c.decodeIfPresent(Bool.self, forKey: .approved) ?? true
         distanceMiles = try c.decodeIfPresent(Double.self, forKey: .distanceMiles)
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .restroom   // Refuge has no such key
     }
 
     init(id: Int, name: String, street: String = "", city: String = "", state: String = "",
          accessible: Bool = false, unisex: Bool = false, changingTable: Bool = false,
          directions: String = "", comment: String = "",
-         latitude: Double = 0, longitude: Double = 0, distanceMiles: Double? = nil) {
+         latitude: Double = 0, longitude: Double = 0, distanceMiles: Double? = nil, kind: Kind = .restroom) {
         self.id = id; self.name = name; self.street = street; self.city = city; self.state = state
         self.country = ""; self.accessible = accessible; self.unisex = unisex
         self.changingTable = changingTable; self.directions = directions; self.comment = comment
         self.latitude = latitude; self.longitude = longitude; self.upvote = 0; self.downvote = 0
-        self.approved = true; self.distanceMiles = distanceMiles
+        self.approved = true; self.distanceMiles = distanceMiles; self.kind = kind
     }
 
     /// A PottyPins pin wins over anything mined from Refuge text.

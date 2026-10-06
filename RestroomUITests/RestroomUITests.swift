@@ -71,11 +71,12 @@ final class RestroomUITests: XCTestCase {
         let coded = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", "Door code 2 5 8 0"), evaluatedWith: row(app, 1))], timeout: wait)
         XCTAssertEqual(coded, .completed, row(app, 1).label)
         // Coded rows are a line taller, so the half sheet realizes only two; expand it before checking order.
-        app.collectionViews["list"].swipeUp()
-        if !row(app, 3).exists { app.collectionViews["list"].swipeUp() } // first swipe may only expand the sheet
+        // With the park as a fifth row a swipe may scroll rows 1–2 off the top, so only the order of whatever is
+        // on screen is asserted.
+        for _ in 0..<3 where !row(app, 3).exists { app.collectionViews["list"].swipeUp() }
         XCTAssertTrue(row(app, 3).waitForExistence(timeout: wait))
         let visible = (1...4).map { row(app, $0) }.filter(\.exists)
-        XCTAssertGreaterThanOrEqual(visible.count, 3, visible.map(\.identifier).joined(separator: ","))
+        XCTAssertGreaterThanOrEqual(visible.count, 2, visible.map(\.identifier).joined(separator: ","))
         let ys = visible.map { $0.frame.minY }
         XCTAssertEqual(ys, ys.sorted(), "rows must be in distance order")
         if !row(app, 4).exists { app.collectionViews["list"].swipeUp() }
@@ -124,6 +125,19 @@ final class RestroomUITests: XCTestCase {
         waitLabel(app.staticTexts["header.title"], "This area")
         XCTAssertFalse(app.staticTexts["detail.name"].exists)
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+    }
+
+    func testParkRowTaggedAndCardExplains() {
+        let app = launch()
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        let park = app.buttons["row.-5"]
+        for _ in 0..<3 where !park.exists { app.collectionViews["list"].swipeUp() }
+        XCTAssertTrue(park.waitForExistence(timeout: wait), "park from Apple POI data listed after the Refuge rows")
+        XCTAssertTrue(park.label.contains("Memorial Park"), park.label)
+        XCTAssertTrue(park.label.contains("Park, usually has restrooms"), park.label)
+        park.tap()
+        XCTAssertTrue(app.staticTexts["detail.kindNote"].waitForExistence(timeout: wait))
+        XCTAssertFalse(app.staticTexts["Votes"].exists)
     }
 
     func testRefreshShowsLoadingRingAndKeepsRows() {

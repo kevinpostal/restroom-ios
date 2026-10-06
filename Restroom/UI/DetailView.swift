@@ -57,7 +57,12 @@ struct DetailView: View {
                     }
 
                     Hairline()
-                    if restroom.amenities.isEmpty {
+                    if let tag = restroom.kind.tag {
+                        Text(tag).themed(.label).accessibilityAddTraits(.isHeader)
+                        Text("Parks and campgrounds usually have a public restroom. Not verified — from Apple Maps, not a restroom report.")
+                            .themed(.body)
+                            .accessibilityIdentifier("detail.kindNote")
+                    } else if restroom.amenities.isEmpty {
                         Text("No amenity details").font(Theme.font(.body)).foregroundStyle(Theme.graphite)
                     } else {
                         ForEach(restroom.amenities, id: \.self) { a in
@@ -79,10 +84,12 @@ struct DetailView: View {
                         Text(restroom.comment).themed(.body)
                     }
 
-                    Hairline()
-                    Text("Votes").themed(.label).accessibilityAddTraits(.isHeader)
-                    Text("\(restroom.upvote) up · \(restroom.downvote) down").themed(.mono)
-                        .accessibilityLabel("\(restroom.upvote) upvotes, \(restroom.downvote) downvotes")
+                    if restroom.kind == .restroom {
+                        Hairline()
+                        Text("Votes").themed(.label).accessibilityAddTraits(.isHeader)
+                        Text("\(restroom.upvote) up · \(restroom.downvote) down").themed(.mono)
+                            .accessibilityLabel("\(restroom.upvote) upvotes, \(restroom.downvote) downvotes")
+                    }
 
                     Button("Copy address") { UIPasteboard.general.string = restroom.addressLine }
                         .font(Theme.font(.title)).foregroundStyle(Theme.red)

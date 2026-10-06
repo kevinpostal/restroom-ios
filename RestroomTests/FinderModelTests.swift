@@ -16,6 +16,13 @@ private struct FakePins: PinProvider {
 
 private let noPins = FakePins(result: .success([]))
 
+private struct FakeParks: PlaceProvider {
+    let result: Result<[Restroom], RefugeError>
+    func places(near center: CLLocationCoordinate2D, radius: CLLocationDistance) async throws -> [Restroom] { try result.get() }
+}
+
+private let noParks = FakeParks(result: .success([]))
+
 /// Records every fetch centre; returns `page(center)`.
 private actor CountingProvider: RestroomProvider {
     private(set) var centers: [CLLocationCoordinate2D] = []
@@ -35,7 +42,7 @@ final class FinderModelTests: XCTestCase {
     private let here = CLLocation(latitude: 37.33, longitude: -122.0)
 
     func testEmptyResultYieldsEmptyState() async {
-        let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, parks: noParks, store: nil)
         m.center = here.coordinate
         await m.reloadAndWait()
         XCTAssertEqual(m.state, .empty)
@@ -43,7 +50,7 @@ final class FinderModelTests: XCTestCase {
     }
 
     func testOfflineYieldsFailedMessage() async {
-        let m = FinderModel(api: FakeProvider(result: .failure(.offline)), pins: noPins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .failure(.offline)), pins: noPins, parks: noParks, store: nil)
         m.center = here.coordinate
         await m.reloadAndWait()
         XCTAssertEqual(m.state, .failed("You're offline"))
@@ -51,7 +58,7 @@ final class FinderModelTests: XCTestCase {
 
     func testUseCurrentLocationLoadsAndLabels() async {
         let list = [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0), Restroom(id: 2, name: "B", latitude: 37.34, longitude: -122.0)]
-        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins, parks: noParks, store: nil)
         m.centerLabel = "Elsewhere"
         m.useCurrentLocation(here)
         await m.reloadAndWait()
@@ -61,7 +68,7 @@ final class FinderModelTests: XCTestCase {
     }
 
     func testReloadWithoutCenterStaysIdle() async {
-        let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, parks: noParks, store: nil)
         await m.reloadAndWait()
         XCTAssertEqual(m.state, .idle)
     }
@@ -70,7 +77,7 @@ final class FinderModelTests: XCTestCase {
         let near = Restroom(id: 1, name: "Near", latitude: 37.33, longitude: -122.0, distanceMiles: 0.1)
         let far = Restroom(id: 2, name: "Far", latitude: 37.3327, longitude: -122.0, distanceMiles: 0.3)   // ~300 m north
         let pins = FakePins(result: .success([DoorPin(name: "Near", latitude: 37.33018, longitude: -122.0, pin: "4321")]))  // ~20 m
-        let m = FinderModel(api: FakeProvider(result: .success([near, far])), pins: pins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success([near, far])), pins: pins, parks: noParks, store: nil)
         m.selected = far
         m.center = here.coordinate
         await m.reloadAndWait()
@@ -81,7 +88,7 @@ final class FinderModelTests: XCTestCase {
 
     func testPinFailureKeepsList() async {
         let list = [Restroom(id: 1, name: "A", latitude: 37.33, longitude: -122.0, distanceMiles: 0.2)]
-        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: FakePins(result: .failure(.offline)), store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: FakePins(result: .failure(.offline)), parks: noParks, store: nil)
         m.center = here.coordinate
         await m.reloadAndWait()
         XCTAssertEqual(m.state, .loaded)
@@ -90,7 +97,7 @@ final class FinderModelTests: XCTestCase {
 
     func testExploreKeepsRowsWhileReloading() async {
         let list = [Restroom(id: 1, name: "A", distanceMiles: 0.2)]
-        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins, store: nil)
+        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins, parks: noParks, store: nil)
         m.useCurrentLocation(here)
         await m.settle()
         XCTAssertEqual(m.state, .loaded)
@@ -105,7 +112,7 @@ final class FinderModelTests: XCTestCase {
 
     func testSameCellIsServedFromCacheWithLocalDistances() async {
         let api = CountingProvider { _ in [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0, distanceMiles: 9)] }
-        let m = FinderModel(api: api, pins: noPins, store: nil)
+        let m = FinderModel(api: api, pins: noPins, parks: noParks, store: nil)
         m.useCurrentLocation(here)
         await m.settle()
         XCTAssertEqual(m.restrooms.first?.distanceMiles ?? 0, 0.069, accuracy: 0.01, "re-ranked from the real centre, not Refuge's figure")
@@ -121,7 +128,7 @@ final class FinderModelTests: XCTestCase {
 
     func testRefreshBypassesCacheAndReportsBusy() async {
         let api = CountingProvider { _ in [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0)] }
-        let m = FinderModel(api: api, pins: noPins, store: nil)
+        let m = FinderModel(api: api, pins: noPins, parks: noParks, store: nil)
         m.useCurrentLocation(here)
         XCTAssertTrue(m.busy)
         await m.settle()
@@ -141,7 +148,7 @@ final class FinderModelTests: XCTestCase {
     func testPanIntoPrefetchedNeighbourUnionsPages() async {
         // Each page carries one restroom at its fetch centre, so a neighbour's page is distinguishable.
         let api = CountingProvider { c in [Restroom(id: Int(c.latitude * 1e4) &* 31 &+ Int(c.longitude * 1e4), name: "at", latitude: c.latitude, longitude: c.longitude)] }
-        let m = FinderModel(api: api, pins: noPins, store: nil)
+        let m = FinderModel(api: api, pins: noPins, parks: noParks, store: nil)
         m.useCurrentLocation(here)
         await m.settle()
         XCTAssertEqual(m.restrooms.count, 1)
@@ -166,7 +173,7 @@ final class FinderModelTests: XCTestCase {
         let diskStore = TileStore(url: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let api = CountingProvider { _ in [Restroom(id: 7, name: "Saved", latitude: 37.331, longitude: -122.0)] }
-        let first = FinderModel(api: api, pins: noPins, store: diskStore)
+        let first = FinderModel(api: api, pins: noPins, parks: noParks, store: diskStore)
         first.useCurrentLocation(here)
         await first.settle()
         try? await Task.sleep(for: .milliseconds(300))   // store writes asynchronously
@@ -185,7 +192,7 @@ final class FinderModelTests: XCTestCase {
                 return [Restroom(id: 8, name: "Fresh", latitude: 37.331, longitude: -122.0)]
             }
         }
-        let second = FinderModel(api: SlowProvider(), pins: noPins, store: diskStore)
+        let second = FinderModel(api: SlowProvider(), pins: noPins, parks: noParks, store: diskStore)
         second.useCurrentLocation(here)
         XCTAssertTrue(second.busy, "stale page is revalidated")
         for _ in 0..<20 where second.restrooms.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
@@ -193,5 +200,29 @@ final class FinderModelTests: XCTestCase {
         XCTAssertEqual(second.state, .loaded)
         await second.settle()
         XCTAssertEqual(second.restrooms.first?.id, 8, "fresh page replaces the stale centre; ring pages still union in")
+    }
+
+    func testParksMergeIntoResultsAndFailSilently() async {
+        let refuge = [Restroom(id: 1, name: "Cafe", latitude: 37.331, longitude: -122.0)]
+        let park = Restroom(id: -9, name: "Green", latitude: 37.3305, longitude: -122.0, kind: .park)
+        let m = FinderModel(api: FakeProvider(result: .success(refuge)), pins: noPins, parks: FakeParks(result: .success([park])), store: nil)
+        m.useCurrentLocation(here)
+        await m.settle()
+        XCTAssertEqual(m.restrooms.map(\.id), [-9, 1], "park ranks by distance like any row")
+        XCTAssertEqual(m.restrooms.first?.kind.tag, "Park")
+
+        let broken = FinderModel(api: FakeProvider(result: .success(refuge)), pins: noPins, parks: FakeParks(result: .failure(.offline)), store: nil)
+        broken.useCurrentLocation(here)
+        await broken.settle()
+        XCTAssertEqual(broken.state, .loaded)
+        XCTAssertEqual(broken.restrooms.map(\.id), [1])
+    }
+
+    func testParkIdIsStableAndNegative() {
+        let c = CLLocationCoordinate2D(latitude: 37.3300, longitude: -122.0150)
+        let a = ParkPlaces.id(name: "Memorial Park", coordinate: c)
+        XCTAssertEqual(a, ParkPlaces.id(name: "Memorial Park", coordinate: c))
+        XCTAssertLessThan(a, 0)
+        XCTAssertNotEqual(a, ParkPlaces.id(name: "Memorial Perk", coordinate: c))
     }
 }

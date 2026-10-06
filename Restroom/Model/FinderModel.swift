@@ -20,6 +20,7 @@ final class FinderModel: ObservableObject {
     private let api: RestroomProvider
     private let pins: PinProvider
     private let places: PlaceResolver
+    private let parks: PlaceProvider
     private var inflight: Task<Void, Never>?
 
     /// Refuge and PottyPins geocode independently; 75 m covers a storefront without bleeding into the next block.
@@ -35,10 +36,11 @@ final class FinderModel: ObservableObject {
     static let serveTTL: TimeInterval = 24 * 60 * 60
 
     init(api: RestroomProvider = RefugeAPI.shared, pins: PinProvider = PottyPinsAPI.shared,
-         places: PlaceResolver = LocalSearchResolver(), store: TileStore? = .disk) {
+         places: PlaceResolver = LocalSearchResolver(), parks: PlaceProvider = ParkPlaces(), store: TileStore? = .disk) {
         self.api = api
         self.pins = pins
         self.places = places
+        self.parks = parks
         self.store = store
         let now = Date()
         cache = (store?.load() ?? [:]).filter { now.timeIntervalSince($0.value.at) < Self.serveTTL }
@@ -101,11 +103,11 @@ final class FinderModel: ObservableObject {
         let canServe = isServable(cell) || (keepingResults && cell.ring.contains { isServable($0) })
         if !canServe && !(keepingResults && state == .loaded) { state = .loading }
         busy = true
-        inflight = Task { [api] in
+        inflight = Task {
             defer { if !Task.isCancelled { busy = false } }
             do {
                 if canServe { await publish(around: center) }
-                let page = try await api.nearby(center, perPage: Self.pageSize)
+                let page = try await fetchPage(at: center)
                 guard !Task.isCancelled else { return }
                 store(page, in: cell)
                 await publish(around: center)
@@ -147,12 +149,25 @@ final class FinderModel: ObservableObject {
         prefetching?.cancel()
         let missing = cell.ring.filter { !isFresh($0) }
         guard !missing.isEmpty else { return }
-        prefetching = Task(priority: .utility) { [api] in
+        prefetching = Task(priority: .utility) {
             for c in missing {
-                guard !Task.isCancelled, let page = try? await api.nearby(c.center, perPage: Self.pageSize) else { return }
+                guard !Task.isCancelled, let page = try? await fetchPage(at: c.center) else { return }
                 store(page, in: c)
             }
         }
+    }
+
+    /// Refuge radius is implicit (nearest N); parks are asked for within a cell-and-a-half so the ring union stays coherent.
+    static let parkRadius: CLLocationDistance = 1_600
+
+    /// One tile page: Refuge restrooms plus parks/campgrounds, fetched concurrently. Refuge errors propagate;
+    /// the park lookup is a bonus and its failure just yields restrooms alone.
+    private func fetchPage(at center: CLLocationCoordinate2D) async throws -> [Restroom] {
+        async let refuge = api.nearby(center, perPage: Self.pageSize)
+        async let nearbyParks = parks.places(near: center, radius: Self.parkRadius)
+        let page = try await refuge
+        let extras = (try? await nearbyParks) ?? []
+        return page + extras
     }
 
     /// Nearest 50 by straight-line distance from `center`, with `distanceMiles` recomputed to match.

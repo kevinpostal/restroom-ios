@@ -6,6 +6,7 @@ struct RestroomApp: App {
         api: UITestMode.isActive ? FixtureProvider() : RefugeAPI.shared,
         pins: UITestMode.isActive ? FixturePins() : PottyPinsAPI.shared,
         places: UITestMode.isActive ? FixtureResolver() : LocalSearchResolver(),
+        parks: UITestMode.isActive ? FixtureParks() : ParkPlaces(),
         store: UITestMode.isActive ? nil : .disk
     )
     @StateObject private var location = LocationService(
