@@ -10,6 +10,8 @@ struct FinderView: View {
     @State private var usedFirstFix = false
     /// Last camera region reported by the map; zoom buttons scale it. nil until the map has laid out.
     @State private var region: MKCoordinateRegion?
+    /// Centre last searched because the user panned there; `recenter()` must not snap the camera back to it.
+    @State private var explored: CLLocationCoordinate2D?
     @State private var detent: SheetDetent = .medium
 
     /// Zoom limits as latitude span (degrees): ~110 m to ~170 km.
@@ -53,8 +55,23 @@ struct FinderView: View {
     /// After a search the map moves; bring the sheet back to half so the new area is visible.
     private func recenter() {
         guard let c = model.center else { return }
+        if let e = explored, meters(e, c) < 1 { return }
         detent = .medium
         move(to: c, span: 1500)
+    }
+
+    /// A user pan past a quarter of the visible span (never under 200 m) searches the new area.
+    /// Programmatic moves land on `model.center` or the selected pin, so they never pass the threshold.
+    private func exploreIfPanned(_ r: MKCoordinateRegion) {
+        guard model.selected == nil, let c = model.center else { return }
+        guard meters(c, r.center) > max(200, r.span.latitudeDelta * 111_000 / 4) else { return }
+        explored = r.center
+        model.explore(r.center)
+    }
+
+    private func meters(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+        CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
     }
 
     private func move(to c: CLLocationCoordinate2D, span: CLLocationDistance) {
@@ -155,6 +172,7 @@ struct FinderView: View {
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControlVisibility(.hidden)
         .onMapCameraChange(frequency: .continuous) { region = $0.region }
+        .onMapCameraChange(frequency: .onEnd) { exploreIfPanned($0.region) }
         .accessibilityLabel("Map of nearby restrooms")
         .accessibilityValue(spanText)
         .accessibilityIdentifier("map")

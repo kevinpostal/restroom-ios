@@ -18,7 +18,8 @@ struct Restroom: Identifiable, Decodable, Equatable {
     let upvote: Int
     let downvote: Int
     let approved: Bool
-    let distanceMiles: Double?
+    /// From Refuge for the fetch centre; `FinderModel` recomputes it when serving cached pages for another centre.
+    var distanceMiles: Double?
     /// PottyPins door pin attached by `FinderModel.attach`; never decoded.
     var pin: String? = nil
 

@@ -16,6 +16,20 @@ private struct FakePins: PinProvider {
 
 private let noPins = FakePins(result: .success([]))
 
+/// Records every fetch centre; returns `page(center)`.
+private actor CountingProvider: RestroomProvider {
+    private(set) var centers: [CLLocationCoordinate2D] = []
+    private let page: @Sendable (CLLocationCoordinate2D) -> [Restroom]
+    init(_ page: @escaping @Sendable (CLLocationCoordinate2D) -> [Restroom]) { self.page = page }
+    func nearby(_ center: CLLocationCoordinate2D, perPage: Int) async throws -> [Restroom] {
+        centers.append(center)
+        return page(center)
+    }
+    func calls(near c: CLLocationCoordinate2D) -> Int {
+        centers.filter { abs($0.latitude - c.latitude) < 1e-9 && abs($0.longitude - c.longitude) < 1e-9 }.count
+    }
+}
+
 @MainActor
 final class FinderModelTests: XCTestCase {
     private let here = CLLocation(latitude: 37.33, longitude: -122.0)
@@ -36,7 +50,7 @@ final class FinderModelTests: XCTestCase {
     }
 
     func testUseCurrentLocationLoadsAndLabels() async {
-        let list = [Restroom(id: 1, name: "A", distanceMiles: 0.2), Restroom(id: 2, name: "B", distanceMiles: 0.9)]
+        let list = [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0), Restroom(id: 2, name: "B", latitude: 37.34, longitude: -122.0)]
         let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins)
         m.centerLabel = "Elsewhere"
         m.useCurrentLocation(here)
@@ -72,5 +86,59 @@ final class FinderModelTests: XCTestCase {
         await m.reloadAndWait()
         XCTAssertEqual(m.state, .loaded)
         XCTAssertEqual(m.restrooms.map(\.access), [nil])
+    }
+
+    func testExploreKeepsRowsWhileReloading() async {
+        let list = [Restroom(id: 1, name: "A", distanceMiles: 0.2)]
+        let m = FinderModel(api: FakeProvider(result: .success(list)), pins: noPins)
+        m.useCurrentLocation(here)
+        await m.settle()
+        XCTAssertEqual(m.state, .loaded)
+        m.explore(CLLocationCoordinate2D(latitude: 37.34, longitude: -122.01))
+        XCTAssertEqual(m.state, .loaded, "no Loading… flash while panning")
+        XCTAssertEqual(m.restrooms.map(\.id), [1])
+        XCTAssertEqual(m.centerLabel, "This area")
+        XCTAssertEqual(m.center?.latitude, 37.34)
+        await m.settle()
+        XCTAssertEqual(m.state, .loaded)
+    }
+
+    func testSameCellIsServedFromCacheWithLocalDistances() async {
+        let api = CountingProvider { _ in [Restroom(id: 1, name: "A", latitude: 37.331, longitude: -122.0, distanceMiles: 9)] }
+        let m = FinderModel(api: api, pins: noPins)
+        m.useCurrentLocation(here)
+        await m.settle()
+        XCTAssertEqual(m.restrooms.first?.distanceMiles ?? 0, 0.069, accuracy: 0.01, "re-ranked from the real centre, not Refuge's figure")
+        m.explore(CLLocationCoordinate2D(latitude: 37.3315, longitude: -121.9995))   // same 0.01° cell
+        await m.settle()
+        XCTAssertEqual(m.state, .loaded)
+        XCTAssertEqual(m.restrooms.first?.distanceMiles ?? 0, 0.044, accuracy: 0.01)
+        let primary = await api.calls(near: here.coordinate)
+        let second = await api.calls(near: CLLocationCoordinate2D(latitude: 37.3315, longitude: -121.9995))
+        XCTAssertEqual(primary, 1)
+        XCTAssertEqual(second, 0, "cache hit: no fetch for the panned centre")
+    }
+
+    func testPanIntoPrefetchedNeighbourUnionsPages() async {
+        // Each page carries one restroom at its fetch centre, so a neighbour's page is distinguishable.
+        let api = CountingProvider { c in [Restroom(id: Int(c.latitude * 1e4) &* 31 &+ Int(c.longitude * 1e4), name: "at", latitude: c.latitude, longitude: c.longitude)] }
+        let m = FinderModel(api: api, pins: noPins)
+        m.useCurrentLocation(here)
+        await m.settle()
+        XCTAssertEqual(m.restrooms.count, 1)
+        // Let the ring prefetch (8 cells) finish, then pan one cell north.
+        var tries = 0
+        while await api.centers.count < 9, tries < 100 {
+            tries += 1
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        let north = Cell(here.coordinate).ring[0].center
+        m.explore(north)
+        await m.settle()
+        XCTAssertEqual(m.state, .loaded)
+        XCTAssertGreaterThanOrEqual(m.restrooms.count, 2, "union of the centre page and its cached neighbours")
+        XCTAssertEqual(m.restrooms.first?.latitude ?? 0, north.latitude, accuracy: 1e-9, "nearest to the new centre first")
+        let fetchesAtNorth = await api.calls(near: north)
+        XCTAssertEqual(fetchesAtNorth, 1, "served by the prefetch, not a second fetch")
     }
 }

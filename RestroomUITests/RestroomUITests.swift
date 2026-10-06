@@ -65,7 +65,7 @@ final class RestroomUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["header.title"].label, "Near you")
         let label = row(app, 1).label
         XCTAssertTrue(label.contains("Happy Lemon"), label)
-        XCTAssertTrue(label.contains("0.4 mi"), label)
+        XCTAssertTrue(label.contains("0.2 mi"), label)
         XCTAssertTrue(label.contains("Accessible"), label)
         // The pin merge publishes a beat after the list; wait for it rather than reading the first label.
         let coded = XCTWaiter().wait(for: [expectation(for: NSPredicate(format: "label CONTAINS %@", "Door code 2 5 8 0"), evaluatedWith: row(app, 1))], timeout: wait)
@@ -80,7 +80,7 @@ final class RestroomUITests: XCTestCase {
         XCTAssertEqual(ys, ys.sorted(), "rows must be in distance order")
         if !row(app, 4).exists { app.collectionViews["list"].swipeUp() }
         XCTAssertTrue(row(app, 4).waitForExistence(timeout: wait), "farthest row reachable by scrolling")
-        XCTAssertTrue(row(app, 4).label.contains("1.3 mi"), row(app, 4).label)
+        XCTAssertTrue(row(app, 4).label.contains("0.4 mi"), row(app, 4).label)
     }
 
     func testTapRowOpensDetailAndSelectsPin() {
@@ -104,6 +104,15 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(row(app, 2).waitForExistence(timeout: wait))
         XCTAssertFalse(app.staticTexts["detail.name"].exists)
         XCTAssertFalse(app.buttons["pin.2"].isSelected)
+    }
+
+    func testPanMapSearchesThisArea() {
+        let app = launch()
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        XCTAssertEqual(app.staticTexts["header.title"].label, "Near you")
+        app.otherElements["map"].firstMatch.swipeLeft()
+        waitLabel(app.staticTexts["header.title"], "This area")
+        XCTAssertTrue(row(app, 1).exists, "rows stay on screen while the new area loads")
     }
 
     func testSearchFocusExpandsSheet() {
@@ -231,7 +240,7 @@ final class RestroomUITests: XCTestCase {
         app.launchArguments = ["-uitest"] + largeText
         app.launch()
         XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
-        XCTAssertTrue(row(app, 1).label.contains("0.4 mi"), row(app, 1).label)
+        XCTAssertTrue(row(app, 1).label.contains("0.2 mi"), row(app, 1).label)
         audit(app)
         row(app, 1).tap()
         XCTAssertTrue(app.staticTexts["detail.name"].waitForExistence(timeout: wait))
