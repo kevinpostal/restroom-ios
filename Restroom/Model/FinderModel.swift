@@ -57,6 +57,14 @@ final class FinderModel: ObservableObject {
         reload()
     }
 
+    /// "Nearest" button: search around `loc` and open the closest verified restroom once rows land.
+    /// Parks only count when no verified restroom is in range.
+    func findNearest(from loc: CLLocation) {
+        openNearestOnPublish = true
+        useCurrentLocation(loc)
+    }
+    private var openNearestOnPublish = false
+
     func search(_ text: String) async {
         let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return }
@@ -115,6 +123,7 @@ final class FinderModel: ObservableObject {
             } catch {
                 guard !Task.isCancelled else { return }
                 if restrooms.isEmpty || !canServe { state = .failed(error.localizedDescription) }
+                openNearestOnPublish = false
             }
         }
     }
@@ -138,6 +147,10 @@ final class FinderModel: ObservableObject {
         let result = Self.rank(pool, from: center)
         restrooms = result
         state = result.isEmpty ? .empty : .loaded
+        if openNearestOnPublish, let nearest = result.first(where: { $0.kind == .restroom }) ?? result.first {
+            openNearestOnPublish = false
+            selected = nearest
+        }
         // Codes are a bonus: the list is already visible, and a PottyPins failure never touches `state`.
         guard !result.isEmpty, let doorPins = try? await pins.pins(), !doorPins.isEmpty, !Task.isCancelled else { return }
         restrooms = Self.attach(doorPins, to: result)

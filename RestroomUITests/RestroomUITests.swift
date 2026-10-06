@@ -84,6 +84,16 @@ final class RestroomUITests: XCTestCase {
         XCTAssertTrue(row(app, 4).label.contains("0.4 mi"), row(app, 4).label)
     }
 
+    func testNearestButtonOpensClosestRestroom() {
+        let app = launch()
+        XCTAssertTrue(row(app, 1).waitForExistence(timeout: wait))
+        app.buttons["header.nearest"].tap()
+        let name = app.staticTexts["detail.name"]
+        XCTAssertTrue(name.waitForExistence(timeout: wait))
+        XCTAssertEqual(name.label, "Happy Lemon")
+        XCTAssertTrue(app.buttons["pin.1"].isSelected)
+    }
+
     func testTapRowOpensDetailAndSelectsPin() {
         let app = launch()
         XCTAssertTrue(row(app, 2).waitForExistence(timeout: wait))

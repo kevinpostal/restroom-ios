@@ -67,6 +67,31 @@ final class FinderModelTests: XCTestCase {
         XCTAssertEqual(m.restrooms.map(\.id), [1, 2])
     }
 
+    func testFindNearestOpensClosestVerifiedRestroom() async {
+        let park = Restroom(id: -5, name: "Park", latitude: 37.3301, longitude: -122.0, kind: .park)   // closest, but a park
+        let near = Restroom(id: 1, name: "Near", latitude: 37.3305, longitude: -122.0)
+        let far = Restroom(id: 2, name: "Far", latitude: 37.34, longitude: -122.0)
+        let m = FinderModel(api: FakeProvider(result: .success([far, near])), pins: noPins,
+                            parks: FakeParks(result: .success([park])), store: nil)
+        m.findNearest(from: here)
+        await m.settle()
+        XCTAssertEqual(m.restrooms.map(\.id), [-5, 1, 2])
+        XCTAssertEqual(m.selected?.id, 1, "closest verified restroom, not the park")
+        m.selected = nil
+        m.useCurrentLocation(here)
+        await m.settle()
+        XCTAssertNil(m.selected, "a plain reload never reopens it")
+    }
+
+    func testFindNearestFallsBackToParkWhenNoRestroom() async {
+        let park = Restroom(id: -5, name: "Park", latitude: 37.3301, longitude: -122.0, kind: .park)
+        let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins,
+                            parks: FakeParks(result: .success([park])), store: nil)
+        m.findNearest(from: here)
+        await m.settle()
+        XCTAssertEqual(m.selected?.id, -5)
+    }
+
     func testReloadWithoutCenterStaysIdle() async {
         let m = FinderModel(api: FakeProvider(result: .success([])), pins: noPins, parks: noParks, store: nil)
         await m.reloadAndWait()

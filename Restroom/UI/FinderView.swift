@@ -8,6 +8,9 @@ struct FinderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var camera: MapCameraPosition = .automatic
     @State private var usedFirstFix = false
+    /// Nearest button pressed before the first fix: open the closest restroom when it arrives.
+    @State private var wantNearest = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// Last camera region reported by the map; zoom buttons scale it. nil until the map has laid out.
     @State private var region: MKCoordinateRegion?
     /// Centre last searched because the user panned there; `recenter()` must not snap the camera back to it.
@@ -47,7 +50,12 @@ struct FinderView: View {
         .onReceive(location.$location.compactMap { $0 }) { loc in
             guard !usedFirstFix else { return }
             usedFirstFix = true
-            model.useCurrentLocation(loc)
+            if wantNearest {
+                wantNearest = false
+                model.findNearest(from: loc)
+            } else {
+                model.useCurrentLocation(loc)
+            }
         }
         .onChange(of: model.center?.latitude) { _, _ in recenter() }
         .onChange(of: model.center?.longitude) { _, _ in recenter() }
@@ -118,13 +126,20 @@ struct FinderView: View {
         } else {
             SearchField(onFocus: { detent = .large })
                 .padding(.horizontal, 2 * Theme.unit)
-            HStack(alignment: .center) {
-                Text(model.centerLabel).themed(.title).lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("header.title")
-                Spacer()
-                refreshButton
-                locateButton
+            // Three 44 pt buttons leave no room for the title at accessibility sizes: stack them underneath.
+            let title = Text(model.centerLabel).themed(.title).lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("header.title")
+            let buttons = HStack(spacing: 0) { refreshButton; locateButton; nearestButton }
+            Group {
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 0) {
+                        title.frame(maxWidth: .infinity, alignment: .leading)
+                        buttons
+                    }
+                } else {
+                    HStack(alignment: .center) { title; Spacer(); buttons }
+                }
             }
             .padding(.horizontal, 2 * Theme.unit).padding(.vertical, Theme.unit)
         }
@@ -158,6 +173,27 @@ struct FinderView: View {
         .accessibilityLabel("Use my location")
         .accessibilityHint("Searches near your current location")
         .accessibilityIdentifier("map.locate")
+    }
+
+    /// The selected-pin glyph as a button: find me, then open the one restroom closest to me.
+    private var nearestButton: some View {
+        Button {
+            if UITestMode.isActive {
+                if !UITestMode.flag("-uitest-denied") { model.findNearest(from: UITestMode.start) }
+            } else if let loc = location.location {
+                model.findNearest(from: loc)
+            } else {
+                wantNearest = true
+                usedFirstFix = false
+                location.request()
+            }
+        } label: {
+            Pin(selected: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Nearest restroom")
+        .accessibilityHint("Finds the closest restroom to you and opens it")
+        .accessibilityIdentifier("header.nearest")
     }
 
     /// Hairline ring: a full circle at rest, a turning three-quarter arc while a fetch is in flight.
